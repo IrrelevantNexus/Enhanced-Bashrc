@@ -1,0 +1,73 @@
+#!/bin/bash
+## Custom Bash Configuration
+## Author: Mike Lilly
+##
+## This file is meant for user customizations and will not be overwritten
+## by updates unless ALLOWUPDATE is explicitly set to True.
+##
+## Sections:
+## - System-wide profile scripts
+## - Core bash configuration
+## - Python environment
+## - Development tools
+
+## ALLOWUPDATE allows you to choose if THIS FILE would be replaced with the newest version during bashrc updates.
+## If you customize this file, please highly consider switching this variable to False.
+## When updating, this existing file is copied as a back up to ~/.config/bashrc/ regardless of what this is set to.
+ALLOWUPDATE='False'
+
+
+# The /etc/profile.d/ directory is used to set system-wide environmental variables on users' shells and execute scripts within it.
+if [ -d /etc/profile.d ]; then
+    for i in /etc/profile.d/*.sh; do
+        if [ -r $i ]; then
+            . $i
+        fi
+    done
+    unset i
+fi
+
+
+# Settings for Bash (must be loaded before prompt to preserve VTE integration)
+. $HOME/.config/bashrc/settings.rc
+
+## Bash includes and the PS1 prompt
+. $HOME/.config/bashrc/prompt.rc
+
+# General Bash Aliases
+. $HOME/.config/bashrc/bash_aliases.rc
+
+# Utility functions (help, backup, doctor, etc.)
+. $HOME/.config/bashrc/utilities.rc
+
+## Python Configuration
+## Sets up Python environment with sane defaults and pyenv integration
+alias python='python3'
+
+if [ -d $HOME/.pyenv ]; then
+  export PYENV_ROOT="$HOME/.pyenv"
+  [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init - bash)"
+else
+  # Notify user about pyenv if Python development is detected
+  if command -v python3 &>/dev/null && [ -d "$HOME/*/setup.py" -o -f "$HOME/requirements.txt" ]; then
+    echo "Note: pyenv is not installed. Consider installing it for better Python version management."
+  fi
+fi
+
+if command -v python3 &>/dev/null; then
+    alias pip='python3 -m pip'
+    # Prevent generation of .pyc files
+    export PYTHONDONTWRITEBYTECODE=1
+    # Disable output buffering for better debugging
+    export PYTHONUNBUFFERED=1
+fi
+
+## Development Environment
+## Configure standard development tools and preferences
+export EDITOR='vim'
+export VISUAL='vim'
+export PAGER='less'
+
+## Custom Content
+## Add your personalizations below this line

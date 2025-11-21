@@ -1,0 +1,541 @@
+#!/bin/bash
+## This file is segregated from INSTALL.sh to allow for updating.
+BACKUP_DIR="$HOME/.config/bashrc/backups"
+
+# PREVIEW_MODE should be set by INSTALL.sh
+PREVIEW_MODE=${PREVIEW_MODE:-false}
+
+function handle_install_error() {
+    local file=$1
+    local error_type=$2
+    
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}ERROR: Failed to install $file${NC}"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    case $error_type in
+        "permission")
+            echo "REASON: Permission denied"
+            echo "SOLUTION: Try one of these:"
+            echo "  1. Check file permissions: ls -l ~/$file"
+            echo "  2. Ensure you own your home directory: ls -ld ~"
+            echo "  3. Run: chmod u+w ~/$file"
+            ;;
+        "disk_space")
+            echo "REASON: Insufficient disk space"
+            echo "SOLUTION: Free up space in your home directory"
+            echo "  Check usage: du -sh ~"
+            ;;
+        "missing_source")
+            echo "REASON: Source file not found"
+            echo "SOLUTION: Ensure you have all required files"
+            echo "  Check: ls -l $WORKINGDIR/$file"
+            ;;
+        *)
+            echo "REASON: Unknown error occurred during installation"
+            echo "SOLUTION: Check the logs above for details"
+            echo "  • Verify file exists: ls -l $WORKINGDIR/$file"
+            echo "  • Check permissions: ls -ld ~ ~/.config"
+            echo "  • Check disk space: df -h ~"
+            ;;
+    esac
+    
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+function validate_prerequisites() {
+    local errors=0
+    
+    echo "Checking prerequisites..."
+    echo ""
+    
+    # Check bash version
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+        echo -e "${RED}✗ Bash version 4.0+ required (you have $BASH_VERSION)${NC}"
+        ((errors++))
+    else
+        echo -e "${GREEN}✓ Bash version OK ($BASH_VERSION)${NC}"
+    fi
+    
+    # Check disk space (need at least 1MB)
+    local available=$(df -k "$HOME" 2>/dev/null | tail -1 | awk '{print $4}')
+    if [ -n "$available" ] && [ "$available" -lt 1024 ]; then
+        echo -e "${RED}✗ Insufficient disk space in $HOME${NC}"
+        ((errors++))
+    else
+        echo -e "${GREEN}✓ Disk space OK${NC}"
+    fi
+    
+    # Check write permissions
+    if [ ! -w "$HOME" ]; then
+        echo -e "${RED}✗ No write permission in $HOME${NC}"
+        ((errors++))
+    else
+        echo -e "${GREEN}✓ Write permission OK${NC}"
+    fi
+    
+    # Check for required commands
+    local missing_optional=()
+    for cmd in rsync awk sed grep; do
+        if ! command -v $cmd &> /dev/null; then
+            missing_optional+=("$cmd")
+        fi
+    done
+    
+    if [ ${#missing_optional[@]} -gt 0 ]; then
+        echo -e "${YELLOW}⚠ Optional commands missing: ${missing_optional[*]}${NC}"
+    else
+        echo -e "${GREEN}✓ All required commands available${NC}"
+    fi
+    
+    echo ""
+    
+    if [ $errors -gt 0 ]; then
+        echo -e "${RED}Cannot continue: $errors prerequisite(s) failed${NC}"
+        echo ""
+        return 1
+    fi
+    
+    return 0
+}
+
+function check() {
+  echo "Checking installation prerequisites..."
+  
+  ## ~/.config/bashrc directory
+  if [ ! -d "$HOME/.config/bashrc" ]; then
+    echo -e "${YELLOW}Creating configuration directory ~/.config/bashrc/${NC}"
+    if ! mkdir -p "$HOME/.config/bashrc"; then
+      echo -e "${RED}Failed to create configuration directory. Check permissions.${NC}"
+      exit 1
+    fi
+  fi
+  chmod ug+s "$HOME/.config/bashrc" || echo -e "${YELLOW}Warning: Could not set directory permissions${NC}"
+
+  # Create backup directory
+  if [ ! -d "$BACKUP_DIR" ]; then
+    echo -e "${YELLOW}Creating backup directory at $BACKUP_DIR${NC}"
+    if ! mkdir -p "$BACKUP_DIR"; then
+      echo -e "${RED}Failed to create backup directory. Check permissions.${NC}"
+      exit 1
+    fi
+  fi
+
+  # Move all legacy backup files into backup directory
+  echo "Checking for legacy backup files..."
+  legacy_count=0
+  # Find all .bkup files in the main config directory
+  while IFS= read -r file; do
+    if [ -f "$file" ] && [[ "$file" != "$BACKUP_DIR/*" ]]; then
+      filename=$(basename "$file")
+      if ! mv "$file" "$BACKUP_DIR/$filename" 2>/dev/null; then
+        echo -e "${YELLOW}Warning: Could not move legacy backup: $filename${NC}"
+      else
+        ((legacy_count++))
+      fi
+    fi
+  done < <(find "$HOME/.config/bashrc" -maxdepth 1 -name "*.bkup")
+
+  if [ $legacy_count -gt 0 ]; then
+    echo -e "${GREEN}Moved $legacy_count legacy backup files to $BACKUP_DIR${NC}"
+  fi
+
+  ## dconf
+  if [ ! -f "$HOME/.config/dconf.custom" ]; then
+    echo "Setting up GNOME desktop configuration..."
+    if [ -f "$WORKINGDIR/.config/dconf.custom" ]; then
+      cp "$WORKINGDIR/.config/dconf.custom" "$HOME/.config/dconf.custom"
+    else
+      echo -e "${YELLOW}Warning: GNOME desktop configuration template not found${NC}"
+    fi
+  fi
+
+  ## .profile warning
+  if [ -f "$HOME/.profile" ]; then
+    echo -e "${YELLOW}Note: ~/.profile exists but won't be loaded when ~/.bash_profile is present.${NC}"
+    echo "Consider moving your ~/.profile customizations to ~/.bashrc-custom"
+  fi
+}
+
+function placefile() {
+  if [ "$PREVIEW_MODE" = true ]; then
+    echo -e "${YELLOW}[PREVIEW] Would backup $FILE and install new version${NC}"
+    return 0
+  fi
+  
+  # Get just the filename without the path for backup
+  local filename=$(basename "$FILE")
+  local backup_path="$BACKUP_DIR/$filename.$(date -I).bkup"
+  printf "${YELLOW}Backing up existing %s to %s${NC}\n" "$FILE" "$backup_path"
+  if ! mv "$HOME/$FILE" "$backup_path" > /dev/null 2>&1; then
+    echo -e "${YELLOW}No existing file to backup${NC}"
+  fi
+  
+  printf "${GREEN}Installing new %s${NC}\n" "$FILE"
+  # Use rsync if available, otherwise fall back to cp
+  if command -v rsync &> /dev/null; then
+    if ! rsync -qa "$WORKINGDIR/$FILE" "$HOME/$FILE" > /dev/null 2>&1; then
+      echo -e "${RED}Failed to copy $FILE. Check permissions and disk space.${NC}"
+      return 1
+    fi
+  else
+    if ! cp -a "$WORKINGDIR/$FILE" "$HOME/$FILE" > /dev/null 2>&1; then
+      echo -e "${RED}Failed to copy $FILE. Check permissions and disk space.${NC}"
+      return 1
+    fi
+  fi
+  
+  # Only try to source bash script files, not text files or other non-executable content
+  if [[ "$FILE" =~ \.(rc|sh|bash_profile|bashrc|bashrc-custom)$ ]] || [[ "$FILE" == ".bashrc" ]] || [[ "$FILE" == ".bash_profile" ]] || [[ "$FILE" == ".bashrc-custom" ]]; then
+    if ! source "$HOME/$FILE" > /dev/null 2>&1; then
+      echo -e "${YELLOW}Warning: Could not source $FILE. You may need to restart your shell.${NC}"
+    fi
+  fi
+}
+
+function install() {
+  if [ "$PREVIEW_MODE" = true ]; then
+    if [ ! -f "$HOME/$FILE" ]; then
+      echo -e "${GREEN}[PREVIEW] Would install new file: ~/$FILE${NC}"
+    else
+      current_checksum=$(sha256sum "$HOME/$FILE" 2>/dev/null | awk '{ print $1 }')
+      update_checksum=$(sha256sum "$WORKINGDIR/$FILE" 2>/dev/null | awk '{ print $1 }')
+      if [ "$current_checksum" = "$update_checksum" ]; then
+        echo -e "${GREEN}[PREVIEW] ~/$FILE is already up to date${NC}"
+      else
+        echo -e "${YELLOW}[PREVIEW] Would update ~/$FILE${NC}"
+        local has_allowupdate=$(cat "$HOME/$FILE" | grep -v '#ALLOWUPDATE' | grep 'ALLOWUPDATE')
+        local allowupdate_true=$(echo "$has_allowupdate" | grep -i 'true')
+        local allowupdate_false=$(echo "$has_allowupdate" | grep -i 'false')
+        
+        if [[ "$FILE" == ".bashrc-custom" ]]; then
+          # Special handling for .bashrc-custom
+          if [ -n "$allowupdate_true" ]; then
+            echo -e "${GREEN}           ALLOWUPDATE is True - would update${NC}"
+          elif [ -n "$allowupdate_false" ]; then
+            echo -e "${YELLOW}           ALLOWUPDATE is False - would skip${NC}"
+          else
+            echo -e "${YELLOW}           No ALLOWUPDATE='True' - would skip (custom file)${NC}"
+          fi
+        else
+          # For other files
+          if [ -n "$allowupdate_true" ]; then
+            echo -e "${GREEN}           ALLOWUPDATE is True - would update${NC}"
+          elif [ -n "$allowupdate_false" ]; then
+            echo -e "${YELLOW}           ALLOWUPDATE is False - would skip${NC}"
+          else
+            echo -e "${GREEN}           No ALLOWUPDATE setting - would update${NC}"
+          fi
+        fi
+      fi
+    fi
+    return 0
+  fi
+  
+  if [ ! -f "$HOME/$FILE" ]; then
+    echo "Installing ~/$FILE"
+    if ! rsync -qa "$WORKINGDIR/$FILE" "$HOME/$FILE"; then
+      echo -e "${RED}Failed to install $FILE. Check permissions and disk space.${NC}"
+      return 1
+    fi
+    # Only try to source bash script files, not text files or other non-executable content
+    if [[ "$FILE" =~ \.(rc|sh|bash_profile|bashrc|bashrc-custom)$ ]] || [[ "$FILE" == ".bashrc" ]] || [[ "$FILE" == ".bash_profile" ]] || [[ "$FILE" == ".bashrc-custom" ]]; then
+      if ! source "$HOME/$FILE" > /dev/null 2>&1; then
+        echo -e "${YELLOW}Warning: Could not source $FILE. You may need to restart your shell.${NC}"
+      fi
+    fi
+  elif [ -f "$HOME/$FILE" ]; then
+    current_checksum=$(sha256sum "$HOME/$FILE" > /dev/null 2>&1 | awk '{ print $1 }')
+    update_checksum=$(sha256sum "$WORKINGDIR/$FILE" | awk '{ print $1 }')
+    if [ "$current_checksum" = "$update_checksum" ]; then
+      echo "You are already using the up to date version of ~/$FILE..."
+    fi
+    if [ "$current_checksum" != "$update_checksum" ]; then
+      echo "Your ~/$FILE differs from what is provided with this installer."
+      
+      # Check for ALLOWUPDATE setting
+      local has_allowupdate=$(cat "$HOME/$FILE" | grep -v '#ALLOWUPDATE' | grep 'ALLOWUPDATE')
+      local allowupdate_true=$(echo "$has_allowupdate" | grep -i 'true')
+      local allowupdate_false=$(echo "$has_allowupdate" | grep -i 'false')
+      
+      # Special handling for .bashrc-custom - only update if ALLOWUPDATE='True'
+      if [[ "$FILE" == ".bashrc-custom" ]]; then
+        if [ -n "$allowupdate_true" ]; then
+          echo "ALLOWUPDATE is set to True for $HOME/$FILE"
+          placefile
+        elif [ -n "$allowupdate_false" ]; then
+          echo "Your ~/$FILE has ALLOWUPDATE set to false, so it will not be modified."
+        else
+          echo "Your ~/$FILE does not contain ALLOWUPDATE='True', so it will not be modified."
+          echo "This file is meant for personal customizations and won't be updated unless explicitly allowed."
+        fi
+      else
+        # For all other files: update if True or if ALLOWUPDATE is missing
+        if [ -n "$allowupdate_true" ]; then
+          echo "ALLOWUPDATE is set to True for $HOME/$FILE"
+          placefile
+        elif [ -n "$allowupdate_false" ]; then
+          echo "Your ~/$FILE has ALLOWUPDATE set to false, so it will not be modified."
+        else
+          echo "Your ~/$FILE does not contain a reference to ALLOWUPDATE. This tends to mean your home uses a different bashrc setup, or you are running an older version prior to ALLOWUPDATE being part of the bashrc."
+          placefile
+        fi
+      fi
+    fi
+  fi
+}
+
+### Fixes for legacy files
+
+function fix_history_search() {
+  local settings_file="$WORKINGDIR/.config/bashrc/settings.rc"
+  local prompt_file="$WORKINGDIR/.config/bashrc/prompt.rc"
+  
+  # Fix settings.rc file
+  if [ -f "$settings_file" ]; then
+    echo -e "${YELLOW}Fixing keyboard navigation bindings...${NC}"
+    
+    # Replace history-search commands with standard history navigation
+    sed -i 's/bind ."\\\e\[A": history-search-backward./bind '\''\\\e\[A": previous-history'\''/g' "$settings_file"
+    sed -i 's/bind ."\\\e\[B": history-search-forward./bind '\''\\\e\[B": next-history'\''/g' "$settings_file"
+    
+    # Add proper Home and End key bindings if missing
+    grep -q "bind .\"\\\\e\[1~\": beginning-of-line" "$settings_file" || \
+      sed -i '/bind ."\\\e\[C": forward-char./a bind '\''\\\e[1~": beginning-of-line'\''' "$settings_file"
+    grep -q "bind .\"\\\\e\[4~\": end-of-line" "$settings_file" || \
+      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[4~": end-of-line'\''' "$settings_file"
+    grep -q "bind .\"\\\\e\[H\": beginning-of-line" "$settings_file" || \
+      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[H": beginning-of-line'\''' "$settings_file"
+    grep -q "bind .\"\\\\e\[F\": end-of-line" "$settings_file" || \
+      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[F": end-of-line'\''' "$settings_file"
+    
+    echo -e "${GREEN}Keyboard navigation bindings fixed${NC}"
+  else
+    echo -e "${YELLOW}Warning: Could not find settings.rc file to fix keyboard bindings${NC}"
+  fi
+  
+  # Fix prompt.rc file
+  if [ -f "$prompt_file" ]; then
+    echo -e "${YELLOW}Fixing prompt for better history navigation...${NC}"
+    
+    # Update PROMPT_COMMAND to include history -a for immediate history saving
+    if grep -q "^PROMPT_COMMAND=set_bash_prompt" "$prompt_file"; then
+      sed -i 's/^PROMPT_COMMAND=set_bash_prompt/PROMPT_COMMAND="history -a; set_bash_prompt"/' "$prompt_file"
+    fi
+    
+    # Fix PS1 format to properly wrap non-printing characters for readline
+    if grep -q 'PS1="' "$prompt_file"; then
+      # Only apply if we haven't already fixed it (check for existing formatting)
+      if ! grep -F '\[' "$prompt_file" >/dev/null; then
+        sed -i 's/PS1="\n\([^"]*\)"/PS1="\\n\\[\\1\\]"/' "$prompt_file"
+        sed -i 's/${COLOR_NONE} ${RED}${BRANCH}/\\[${COLOR_NONE}\\] \\[${RED}${BRANCH}\\]/' "$prompt_file"
+        sed -i 's/\(\\n\)${COLOR_NONE}${PROMPT_SYMBOL}/\1\\[${COLOR_NONE}\\]${PROMPT_SYMBOL}/' "$prompt_file"
+      fi
+    fi
+    
+    echo -e "${GREEN}Prompt fixed for better history navigation${NC}"
+  else
+    echo -e "${YELLOW}Warning: Could not find prompt.rc file${NC}"
+  fi
+}
+
+function fix_history_timestamps() {
+  local history_file="$HOME/.bash_history"
+  
+  if [ -f "$history_file" ]; then
+    echo -e "${YELLOW}Checking bash history timestamps...${NC}"
+    
+    # Create backup of history file
+    local backup_file="$HOME/.config/bashrc/backups/.bash_history.$(date +%Y%m%d%H%M%S).bak"
+    cp "$history_file" "$backup_file"
+    
+    # Check if history file contains any timestamps (lines starting with #)
+    if grep -q "^#" "$history_file"; then
+      # Properly count entries that need timestamps by checking if command lines
+      # are preceded by timestamp lines
+      local needs_fix=false
+      local last_line_was_timestamp=false
+      local commands_without_timestamps=0
+      local total_commands=0
+      
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^# ]]; then
+          # This is a timestamp line
+          last_line_was_timestamp=true
+        else
+          # This is a command line
+          ((total_commands++))
+          if [ "$last_line_was_timestamp" = false ]; then
+            # This command doesn't have a preceding timestamp
+            ((commands_without_timestamps++))
+            needs_fix=true
+          fi
+          last_line_was_timestamp=false
+        fi
+      done < "$history_file"
+      
+      if [ "$needs_fix" = true ]; then
+        echo -e "${YELLOW}Found $commands_without_timestamps out of $total_commands commands without timestamps${NC}"
+        echo -e "${YELLOW}Normalizing history file...${NC}"
+        
+        # Create a temp file with normalized history
+        local temp_file=$(mktemp)
+        local timestamp="#$(date +%s)"
+        
+        # Process the file line by line
+        local last_line_was_timestamp=false
+        while IFS= read -r line; do
+          # If line starts with #, it's a timestamp
+          if [[ "$line" =~ ^# ]]; then
+            echo "$line" >> "$temp_file"
+            last_line_was_timestamp=true
+          else
+            # If previous line wasn't a timestamp, add one
+            if [ "$last_line_was_timestamp" = false ]; then
+              echo "$timestamp" >> "$temp_file"
+            fi
+            echo "$line" >> "$temp_file"
+            last_line_was_timestamp=false
+          fi
+        done < "$history_file"
+        
+        # Replace original file with fixed version
+        mv "$temp_file" "$history_file"
+        echo -e "${GREEN}Bash history timestamps normalized${NC}"
+      else
+        echo -e "${GREEN}All $total_commands commands have timestamps, no changes needed${NC}"
+      fi
+    else
+      # No timestamps at all in the file - count commands for info
+      local total_lines=$(wc -l < "$history_file")
+      echo -e "${GREEN}No timestamps found in history file ($total_lines commands), no changes needed${NC}"
+    fi
+  else
+    echo -e "${YELLOW}No bash history file found${NC}"
+  fi
+}
+
+###
+
+function cleanup() {
+  if [ -n "$1" ]; then
+    c=$1
+  else
+    echo
+    echo "Backup Management"
+    echo "----------------"
+    echo "You have $(find "$BACKUP_DIR" -type f -mtime +90 | wc -l) backup files older than 90 days"
+    read -rp "Would you like to remove old backups? (y/n) " c
+    echo
+  fi
+  if [[ "${c,,}" == "y" ]] || [[ "${c,,}" == "yes" ]]; then
+    echo -e "${YELLOW}Cleaning up old backups...${NC}"
+    
+    ## Removing legacy files and backups
+    find "$HOME/.filelist" -type f -delete 2>/dev/null
+    find "$HOME/.install.rc" -type f -delete 2>/dev/null
+    find "$HOME/.config/*.bkup" -type d -mtime +90 -delete 2>/dev/null
+    find "$BACKUP_DIR" -type f -mtime +90 | sort | head -n -1 | xargs -r rm -f 2>/dev/null
+
+    echo -e "${GREEN}Cleanup completed. Your configuration is now optimized.${NC}"
+  else
+    echo "Keeping all backup files."
+  fi
+}
+
+
+### Main Logic
+
+# Validate prerequisites first
+if ! validate_prerequisites; then
+    exit 1
+fi
+
+check
+echo
+echo -e "${GREEN}Starting installation...${NC}"
+echo
+
+# Install configuration files
+success=true
+installed_count=0
+updated_count=0
+skipped_count=0
+failed_count=0
+
+for FILE in $(cat "$WORKINGDIR/.filelist"); do
+  if [ ! -f "$HOME/$FILE" ]; then
+    if install; then
+      ((installed_count++))
+    else
+      ((failed_count++))
+      success=false
+    fi
+  else
+    current_checksum=$(sha256sum "$HOME/$FILE" 2>/dev/null | awk '{ print $1 }')
+    update_checksum=$(sha256sum "$WORKINGDIR/$FILE" 2>/dev/null | awk '{ print $1 }')
+    if [ "$current_checksum" = "$update_checksum" ]; then
+      ((skipped_count++))
+    else
+      if install; then
+        ((updated_count++))
+      else
+        ((failed_count++))
+        success=false
+      fi
+    fi
+  fi
+done
+
+echo ""
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║              Installation Summary                          ║"
+echo "╚════════════════════════════════════════════════════════════╝"
+echo ""
+
+if [ "$PREVIEW_MODE" = true ]; then
+    echo -e "${YELLOW}PREVIEW MODE - No changes were made${NC}"
+    echo ""
+fi
+
+echo -e "${GREEN}✓ New files:     ${NC}$installed_count"
+echo -e "${GREEN}✓ Updated:       ${NC}$updated_count"
+echo -e "${YELLOW}⊘ Unchanged:     ${NC}$skipped_count"
+echo -e "${RED}✗ Failed:        ${NC}$failed_count"
+echo ""
+
+if [ "$PREVIEW_MODE" = false ]; then
+  if [ "$success" = true ] && [ $failed_count -eq 0 ]; then
+    echo -e "${GREEN}Installation completed successfully!${NC}"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Restart your terminal or run: source ~/.bashrc"
+    echo "  2. Run 'bashrc-help' to see available commands"
+    echo "  3. Run 'bashrc-version' to verify installation"
+    echo "  4. Edit ~/.bashrc-custom for personal customizations"
+  else
+    echo -e "${YELLOW}Installation completed with errors.${NC}"
+    echo "Please review the error messages above."
+  fi
+  
+  # Add fix for history timestamps (only in real install)
+  echo ""
+  fix_history_timestamps
+  # Also fix history search bindings for prior installation
+  fix_history_search
+else
+  echo "Run without --preview to perform actual installation"
+fi
+
+echo ""
+if [ "$PREVIEW_MODE" = false ]; then
+  cleanup "$@"
+fi
+
+echo ""
+echo "For help and documentation:"
+echo "  • Run: bashrc-help"
+echo "  • Check: ~/.config/bashrc/ for configuration files"
+echo "  • Backups: ~/.config/bashrc/backups/"
+echo ""

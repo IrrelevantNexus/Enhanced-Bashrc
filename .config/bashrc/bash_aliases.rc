@@ -1,0 +1,185 @@
+#!/bin/bash
+## Bash enhancements provided by:
+## - Mike Lilly
+##
+
+## ALLOWUPDATE allows you to choose if THIS FILE would be replaced with the newest version
+ALLOWUPDATE='True'
+
+### FILE SYSTEM NAVIGATION ###
+
+## Directory listing
+alias ll='ls -lAFh'        # Detailed list with human-readable sizes
+alias la='ls -A'           # List all files including hidden
+alias l='ls -CF'           # Compact list with file type indicators
+alias lsd='ls -alF | grep /$'  # List only directories
+alias lt='ls -h --size -1 -S --classify'  # List files by size
+
+### FILE OPERATIONS ###
+
+## Safe file operations - asks for confirmation before overwriting
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+
+## Directory operations  
+alias mkdir='mkdir -p'     # Create parent directories as needed
+alias ..='cd ..'           # Go up one directory
+alias ...='cd ../..'       # Go up two directories
+
+### SYSTEM TOOLS ###
+
+## Process management
+alias psg='ps aux | grep -v grep | grep -i -e VSZ -e'  # Search for processes
+alias meminfo='free -m -l -t'  # Display memory information
+
+## Network tools
+alias ports='netstat -tulanp'  # Show all open ports
+alias ping='ping -c 5'         # Ping with count of 5 (don't run forever)
+
+### GIT
+
+## Git shortcuts for common operations
+alias gs='git status'              # Quick git status
+alias ga='git add'                 # Stage files
+alias gc='git commit'              # Commit changes
+alias gp='git push'                # Push to remote
+alias gl='git pull'                # Pull from remote
+alias gd='git diff'                # Show changes
+alias glog='git log --oneline --graph --decorate --all -10'  # Pretty log (last 10)
+
+## List all files in a folder in a git repository by last commit date
+## This lists all the files in a folder, then finds the commit date for them one by one, then sorts them from newest to oldest
+#alias gitls='git ls-tree --name-only HEAD foldername/ | while read filename; do echo "$(git log -1 --format="%ci " -- $filename) $filename"; done | sort -r'
+
+## Git status with enhanced information
+function git-status-enhanced() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        echo "Not a git repository"
+        return 1
+    fi
+    
+    echo "Repository Status:"
+    echo "=================="
+    git status -sb
+    echo ""
+    
+    # Show stashes if any
+    local stash_count=$(git stash list 2>/dev/null | wc -l)
+    if [ "$stash_count" -gt 0 ]; then
+        echo "Stashes: $stash_count"
+        git stash list | head -3
+        [ "$stash_count" -gt 3 ] && echo "  ... and $((stash_count - 3)) more"
+        echo ""
+    fi
+    
+    # Show unpushed commits
+    local ahead=$(git rev-list --count @{u}.. 2>/dev/null || echo "0")
+    if [ "$ahead" != "0" ]; then
+        echo "Unpushed commits: $ahead"
+        git log --oneline @{u}.. | head -5
+        echo ""
+    fi
+}
+alias gst='git-status-enhanced'    # Enhanced git status
+
+### Tools
+
+## Shows a clock on the top right of the terminal. Note, this updates the terminal, so this can be used to keep the session alive as a bonus 'feature'
+#alias tclock="while sleep 1; do tput sc; tput cup 0 $(($(tput cols)-29)); date; tput rc; done &"
+
+## Quick find
+#alias qfind="find . -name "
+
+## cp with progress shown
+## Note that rsync -a includes the -r flag
+#alias cpv='rsync -ahP --info=progress2'              
+
+# Source Bash completion definitions for tab completion on commands
+if [ -f /etc/profile.d/bash_completion.sh ]; then
+       source /etc/profile.d/bash_completion.sh
+fi
+
+## Extract archives, because tar flags are hard to remember
+## Usage: $ extract <archive>
+extract () {
+   if [ -f "$1" ] ; then
+       case $1 in
+           *.tar.bz2)   tar xvjf "$1"    ;;
+           *.tar.gz)    tar xvzf "$1"    ;;
+           *.bz2)       bunzip2 "$1"     ;;
+           *.rar)       unrar x "$1"     ;;
+           *.gz)        gunzip "$1"      ;;
+           *.tar)       tar xvf "$1"     ;;
+           *.tbz2)      tar xvjf "$1"    ;;
+           *.tgz)       tar xvzf "$1"    ;;
+           *.zip)       unzip "$1"       ;;
+           *.Z)         uncompress "$1"  ;;
+           *.7z)        7z x "$1"        ;;
+           *)           echo "I don't know how to extract '$1'..." ;;
+       esac
+   else
+       echo "'$1' is not a valid file!"
+   fi
+ }
+
+## System information summary
+function sysinfo() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║                    System Information                      ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Basic info
+    echo "Hostname:    $HOSTNAME"
+    echo "User:        $USER"
+    echo "Shell:       $SHELL ($BASH_VERSION)"
+    echo "OS:          $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || uname -s)"
+    echo "Kernel:      $(uname -r)"
+    echo "Uptime:      $(uptime -p 2>/dev/null || uptime | sed 's/.*up //')"
+    echo ""
+    
+    # CPU
+    echo "CPU:         $(lscpu 2>/dev/null | grep 'Model name' | cut -d: -f2 | xargs || echo 'N/A')"
+    echo "Cores:       $(nproc 2>/dev/null || echo 'N/A')"
+    echo ""
+    
+    # Memory
+    if command -v free &> /dev/null; then
+        echo "Memory:      $(free -h | awk 'NR==2{printf "%s / %s (%.0f%%)", $3, $2, $3/$2*100}')"
+    fi
+    echo ""
+    
+    # Disk
+    echo "Disk Usage:"
+    df -h / | awk 'NR==2{printf "  Root:      %s / %s (%s)\n", $3, $2, $5}'
+    df -h $HOME | awk 'NR==2{printf "  Home:      %s / %s (%s)\n", $3, $2, $5}'
+    echo ""
+    
+    # Network
+    echo "IP Address:  $(hostname -I 2>/dev/null | awk '{print $1}' || echo 'N/A')"
+    echo ""
+    
+    # Bash config version
+    if [ -n "$BASHRC_VERSION" ]; then
+        echo "Bashrc:      v$BASHRC_VERSION"
+    fi
+}
+
+## Quick system resource check
+function resources() {
+    echo "System Resources:"
+    echo "================="
+    echo ""
+    echo "CPU Usage:"
+    top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print "  Idle: "$1"%\n  Used: "100-$1"%"}'
+    echo ""
+    echo "Memory:"
+    free -h | awk 'NR==2{printf "  Used: %s / %s (%.0f%%)\n", $3, $2, $3/$2*100}'
+    echo ""
+    echo "Top 5 Processes by Memory:"
+    ps aux | sort -nrk 4 | head -5 | awk '{printf "  %-20s %5s%%  %s\n", substr($11,1,20), $4, $6}'
+    echo ""
+    echo "Disk:"
+    df -h / | awk 'NR==2{printf "  Used: %s / %s (%s)\n", $3, $2, $5}'
+}

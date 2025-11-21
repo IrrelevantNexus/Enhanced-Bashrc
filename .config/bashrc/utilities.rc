@@ -1,0 +1,440 @@
+#!/bin/bash
+## Bash Utility Functions
+## Author: Mike Lilly
+##
+## This file contains utility functions for the enhanced bash configuration:
+## - Help system
+## - Backup and restore
+## - Performance profiling
+## - Health checking
+## - Quick reference
+
+## ALLOWUPDATE allows you to choose if THIS FILE would be replaced with the newest version during bashrc updates.
+## If you customize this file, please highly consider switching this variable to True.
+## When updating, this existing file is copied as a back up to ~/.config/bashrc/ regardless of what this is set to.
+ALLOWUPDATE='True'
+
+## Help System
+function bashrc-help() {
+    cat << 'EOF'
+╔════════════════════════════════════════════════════════════╗
+║         Enhanced Bash Configuration - Help                 ║
+╚════════════════════════════════════════════════════════════╝
+
+COMMANDS:
+  updatebash              - Update bash configuration
+  updatebash-preview      - Preview updates before installing
+  bashrc-help             - Show this help message
+  bashrc-cheatsheet       - Quick reference card (also: cheat)
+  bashrc-version          - Show version information
+  bashrc-doctor           - Check configuration health
+  bashrc-profile          - Profile shell startup performance
+  bashrc-backup           - Create manual backup
+  list-aliases            - Show all available aliases
+  list-functions          - Show all custom functions
+  restorebash --list      - Show available backups
+  restorebash --latest    - Restore most recent backup
+  restorebash --clean     - Remove old backups (90+ days)
+  sysinfo                 - Display system information
+  resources               - Show system resource usage
+  extract <file>          - Extract various archive formats
+
+USEFUL ALIASES:
+  ll                      - Detailed file listing (ls -lAFh)
+  la                      - List all files (ls -A)
+  ..                      - Go up one directory
+  ...                     - Go up two directories
+  psg <process>           - Search for running process
+  ports                   - Show all open network ports
+  meminfo                 - Display memory information
+  ping                    - Ping with count of 5
+
+FILE LOCATIONS:
+  ~/.bashrc               - Main bash configuration
+  ~/.bash_profile         - Login shell configuration
+  ~/.bashrc-custom        - Your customizations (edit this!)
+  ~/.config/bashrc/       - Component configurations
+    ├── prompt.rc         - Prompt configuration
+    ├── settings.rc       - Shell settings & history
+    ├── bash_aliases.rc   - Aliases and functions
+    └── utilities.rc      - Utility functions (help, backup, etc.)
+
+CUSTOMIZATION:
+  Edit ~/.bashrc-custom to add your own aliases and functions.
+  Set ALLOWUPDATE='False' in any file you customize to prevent updates.
+
+BACKUP MANAGEMENT:
+  Backups are stored in: ~/.config/bashrc/backups/
+  View backups: restorebash --list
+  Restore latest: restorebash --latest
+
+PYTHON CONFIGURATION:
+  python                  - Alias to python3
+  pip                     - Uses python3 -m pip
+
+DOCUMENTATION:
+  README: Check your installation directory or /opt/bashrc/
+  Troubleshooting: See TROUBLESHOOTING.md for common issues
+  Report issues: Contact your administrator
+
+For more help with specific topics:
+  bashrc-help | grep <topic>
+  
+Examples:
+  bashrc-help | grep -i git
+  bashrc-help | grep -i python
+  
+View documentation files:
+  less /opt/bashrc/README.md
+  less /opt/bashrc/TROUBLESHOOTING.md
+EOF
+}
+
+## List available aliases
+function list-aliases() {
+    echo "Available Aliases:"
+    echo "=================="
+    echo ""
+    alias | sed 's/alias //' | column -t -s='=' | sort | while IFS= read -r line; do
+        echo "  $line"
+    done
+    echo ""
+    echo "Tip: Use 'type <alias>' to see what an alias does"
+}
+
+## List custom functions
+function list-functions() {
+    echo "Available Custom Functions:"
+    echo "==========================="
+    echo ""
+    declare -F | awk '{print $3}' | grep -v '^_' | sort | while IFS= read -r func; do
+        echo "  $func"
+        # Try to get first comment line from function
+        type "$func" 2>/dev/null | grep -m1 "^[[:space:]]*##" | sed 's/^[[:space:]]*##/    →/'
+    done
+    echo ""
+    echo "Tip: Use 'type <function>' to see function definition"
+}
+
+## Restore from backup
+function restorebash() {
+    local BACKUP_DIR="$HOME/.config/bashrc/backups"
+    
+    if [ ! -d "$BACKUP_DIR" ]; then
+        echo "No backup directory found at $BACKUP_DIR"
+        return 1
+    fi
+    
+    case "$1" in
+        --list|-l)
+            echo "Available backups in $BACKUP_DIR:"
+            echo "=========================================="
+            if ! ls -lht "$BACKUP_DIR"/*.bkup 2>/dev/null | head -20; then
+                echo "No backup files found"
+                return 1
+            fi
+            echo ""
+            echo "Use: restorebash <filename> to restore a specific backup"
+            echo "Use: restorebash --latest to restore the most recent backup"
+            ;;
+        --latest)
+            local latest=$(ls -t "$BACKUP_DIR"/.bashrc.*.bkup 2>/dev/null | head -1)
+            if [ -z "$latest" ]; then
+                echo "No .bashrc backups found"
+                return 1
+            fi
+            echo "Restoring .bashrc from: $(basename "$latest")"
+            if cp "$latest" "$HOME/.bashrc"; then
+                echo "✓ Restored successfully!"
+                echo "Restart your terminal or run: source ~/.bashrc"
+            else
+                echo "✗ Failed to restore backup"
+                return 1
+            fi
+            ;;
+        --clean)
+            echo "Cleaning old backups (older than 90 days)..."
+            local count=$(find "$BACKUP_DIR" -type f -name "*.bkup" -mtime +90 2>/dev/null | wc -l)
+            if [ "$count" -eq 0 ]; then
+                echo "No old backups to clean"
+                return 0
+            fi
+            echo "Found $count backup(s) older than 90 days"
+            read -rp "Delete them? (yes/no): " confirm
+            if [[ "$confirm" == "yes" ]]; then
+                find "$BACKUP_DIR" -type f -name "*.bkup" -mtime +90 -delete
+                echo "✓ Cleaned $count old backup(s)"
+            else
+                echo "Cleanup cancelled"
+            fi
+            ;;
+        --help|-h)
+            echo "Usage: restorebash [option|filename]"
+            echo ""
+            echo "Options:"
+            echo "  --list, -l     : Show available backups"
+            echo "  --latest       : Restore most recent .bashrc backup"
+            echo "  --clean        : Remove backups older than 90 days"
+            echo "  --help, -h     : Show this help"
+            echo "  <filename>     : Restore specific backup file"
+            echo ""
+            echo "Examples:"
+            echo "  restorebash --list"
+            echo "  restorebash --latest"
+            echo "  restorebash --clean"
+            echo "  restorebash .bashrc.2025-10-17.bkup"
+            ;;
+        "")
+            echo "Usage: restorebash [--list|--latest|--clean|filename]"
+            echo "Run 'restorebash --help' for more information"
+            ;;
+        *)
+            local backup_file=""
+            if [ -f "$BACKUP_DIR/$1" ]; then
+                backup_file="$BACKUP_DIR/$1"
+            elif [ -f "$1" ]; then
+                backup_file="$1"
+            else
+                echo "Backup file not found: $1"
+                echo "Run 'restorebash --list' to see available backups"
+                return 1
+            fi
+            
+            echo "Restoring from: $(basename "$backup_file")"
+            
+            # Determine what file to restore based on backup name
+            if [[ "$backup_file" =~ \.bashrc\. ]]; then
+                target="$HOME/.bashrc"
+            elif [[ "$backup_file" =~ \.bash_profile\. ]]; then
+                target="$HOME/.bash_profile"
+            elif [[ "$backup_file" =~ \.bashrc-custom\. ]]; then
+                target="$HOME/.bashrc-custom"
+            else
+                echo "Cannot determine target file from backup name"
+                return 1
+            fi
+            
+            if cp "$backup_file" "$target"; then
+                echo "✓ Restored to: $target"
+                echo "Restart your terminal or run: source ~/.bashrc"
+            else
+                echo "✗ Failed to restore backup"
+                return 1
+            fi
+            ;;
+    esac
+}
+
+## Shell performance profiler
+function bashrc-profile() {
+    echo "Profiling shell startup time..."
+    echo "======================================"
+    echo ""
+    
+    # Overall timing
+    local total_time=$(TIMEFORMAT='%3R'; { time bash -i -c exit; } 2>&1)
+    echo "Total startup time: ${total_time}s"
+    
+    # Check for common slow operations
+    echo ""
+    echo "Checking for common performance issues:"
+    echo "--------------------------------------"
+    
+    # Check history size
+    local hist_size=$(wc -l < ~/.bash_history 2>/dev/null || echo "0")
+    if [ "$hist_size" -gt 500000 ]; then
+        echo "⚠  Large history file: $hist_size lines (consider reducing)"
+    else
+        echo "✓  History file size OK: $hist_size lines"
+    fi
+    
+    # Check for slow network operations
+    if grep -q "kinit" ~/.bashrc 2>/dev/null; then
+        echo "✓  Kerberos ticket renewal runs in background"
+    fi
+    
+    # Check pyenv/conda initialization
+    if grep -q "pyenv init" ~/.bashrc-custom 2>/dev/null; then
+        echo "⚠  pyenv initialization can be slow (consider lazy loading)"
+    fi
+    
+    if grep -q "conda.*initialize" ~/.bashrc 2>/dev/null || grep -q "conda.*initialize" ~/.bashrc-custom 2>/dev/null; then
+        echo "⚠  conda initialization can be slow (consider lazy loading)"
+    fi
+    
+    # Check number of sourced files
+    local sourced_count=$(grep -c "^\." ~/.bashrc ~/.bashrc-custom 2>/dev/null | awk -F: '{sum+=$2} END {print sum}')
+    if [ "$sourced_count" -gt 10 ]; then
+        echo "⚠  Many sourced files: $sourced_count (consider consolidating)"
+    else
+        echo "✓  Sourced files OK: $sourced_count"
+    fi
+    
+    echo ""
+    echo "Tips for improving performance:"
+    echo "  • Use lazy loading for pyenv/nvm/conda"
+    echo "  • Reduce HISTSIZE if you don't need 1M commands"
+    echo "  • Disable features you don't use"
+}
+
+## Configuration doctor - check for common issues
+function bashrc-doctor() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║         Bash Configuration Health Check                    ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    local issues=0
+    local warnings=0
+    
+    # Check bash version
+    echo "Checking Bash version..."
+    if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+        echo "✓ Bash version OK: $BASH_VERSION"
+    else
+        echo "✗ Bash version too old: $BASH_VERSION (need 4.0+)"
+        ((issues++))
+    fi
+    echo ""
+    
+    # Check required files
+    echo "Checking configuration files..."
+    for file in .bashrc .bash_profile .bashrc-custom; do
+        if [ -f "$HOME/$file" ]; then
+            echo "✓ $file exists"
+        else
+            echo "✗ $file missing"
+            ((issues++))
+        fi
+    done
+    echo ""
+    
+    # Check for syntax errors
+    echo "Checking for syntax errors..."
+    if bash -n ~/.bashrc 2>/dev/null; then
+        echo "✓ .bashrc syntax OK"
+    else
+        echo "✗ .bashrc has syntax errors"
+        ((issues++))
+    fi
+    
+    if bash -n ~/.bashrc-custom 2>/dev/null; then
+        echo "✓ .bashrc-custom syntax OK"
+    else
+        echo "✗ .bashrc-custom has syntax errors"
+        ((issues++))
+    fi
+    echo ""
+    
+    # Check TERM variable
+    echo "Checking terminal settings..."
+    if [ -n "$TERM" ]; then
+        echo "✓ TERM is set: $TERM"
+        if [[ "$TERM" == *"256color"* ]]; then
+            echo "✓ 256 color support enabled"
+        else
+            echo "⚠  No 256 color support (consider using xterm-256color)"
+            ((warnings++))
+        fi
+    else
+        echo "✗ TERM is not set"
+        ((issues++))
+    fi
+    echo ""
+    
+    # Check PATH
+    echo "Checking PATH..."
+    if [[ ":$PATH:" == *":$HOME/bin:"* ]] || [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+        echo "✓ User bin directories in PATH"
+    else
+        echo "⚠  User bin directories not in PATH"
+        ((warnings++))
+    fi
+    echo ""
+    
+    # Check for common conflicts
+    echo "Checking for conflicts..."
+    if [ -f "$HOME/.profile" ] && [ -f "$HOME/.bash_profile" ]; then
+        echo "⚠  Both .profile and .bash_profile exist (.profile will be ignored)"
+        ((warnings++))
+    else
+        echo "✓ No conflicting profile files"
+    fi
+    echo ""
+    
+    # Check backup directory
+    echo "Checking backup system..."
+    if [ -d "$HOME/.config/bashrc/backups" ]; then
+        local backup_count=$(ls -1 "$HOME/.config/bashrc/backups"/*.bkup 2>/dev/null | wc -l)
+        echo "✓ Backup directory exists ($backup_count backups)"
+        if [ "$backup_count" -gt 50 ]; then
+            echo "⚠  Many backups ($backup_count) - consider running: restorebash --clean"
+            ((warnings++))
+        fi
+    else
+        echo "✗ Backup directory missing"
+        ((issues++))
+    fi
+    echo ""
+    
+    # Summary
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║                    Health Check Summary                    ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    if [ "$issues" -eq 0 ] && [ "$warnings" -eq 0 ]; then
+        echo "✅ All checks passed! Your configuration is healthy."
+    else
+        echo "Issues found: $issues"
+        echo "Warnings: $warnings"
+        echo ""
+        if [ "$issues" -gt 0 ]; then
+            echo "⚠  Please address the issues above"
+        fi
+        if [ "$warnings" -gt 0 ]; then
+            echo "💡 Consider addressing the warnings for optimal performance"
+        fi
+    fi
+    echo ""
+    echo "For help with any issues, see: TROUBLESHOOTING.md"
+}
+
+## Quick config backup
+function bashrc-backup() {
+    local BACKUP_DIR="$HOME/.config/bashrc/backups"
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    
+    echo "Creating manual backup..."
+    
+    if [ ! -d "$BACKUP_DIR" ]; then
+        mkdir -p "$BACKUP_DIR"
+    fi
+    
+    for file in .bashrc .bash_profile .bashrc-custom; do
+        if [ -f "$HOME/$file" ]; then
+            cp "$HOME/$file" "$BACKUP_DIR/${file}.${timestamp}.manual.bkup"
+            echo "✓ Backed up $file"
+        fi
+    done
+    
+    echo ""
+    echo "Backup complete: $BACKUP_DIR"
+    echo "Timestamp: $timestamp"
+    echo ""
+    echo "To restore: restorebash --list"
+}
+
+## Show quick reference card
+function bashrc-cheatsheet() {
+    if [ -f "$HOME/.config/bashrc/quick-reference.txt" ]; then
+        cat "$HOME/.config/bashrc/quick-reference.txt"
+    elif [ -f "/opt/bashrc/.config/bashrc/quick-reference.txt" ]; then
+        cat "/opt/bashrc/.config/bashrc/quick-reference.txt"
+    else
+        echo "Quick reference not found. Run 'bashrc-help' instead."
+    fi
+}
+
+## Quick access alias to cheatsheet
+alias cheat='bashrc-cheatsheet'

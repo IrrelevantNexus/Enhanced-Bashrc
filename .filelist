@@ -1,0 +1,8 @@
+.config/bashrc/bash_aliases.rc
+.config/bashrc/prompt.rc
+.config/bashrc/settings.rc
+.config/bashrc/utilities.rc
+.config/bashrc/quick-reference.txt
+.bashrc-custom
+.bashrc
+.bash_profile

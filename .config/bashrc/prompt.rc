@@ -1,0 +1,170 @@
+#!/bin/bash
+## Bash enhancements provided by:
+## - Mike Lilly
+##
+
+## ALLOWUPDATE allows you to choose if THIS FILE would be replaced with the newest version during bashrc updates.
+## If you customize this file, please highly consider switching this variable to True.
+## When updating, this existing file is copied as a back up to ~/.config/bashrc/ regardless of what this is set to.
+ALLOWUPDATE='True'
+
+
+### LOGIC
+
+## The various escape codes that we can use to color our prompt.
+RED="\e[31m"
+YELLOW="\e[33m"
+GREEN="\e[32m"
+BLUE="\e[34m"
+LIGHT_RED="\e[31m"
+LIGHT_GREEN="\e[32m"
+WHITE="\e[37m"
+LIGHT_GRAY="\e[37m"
+COLOR_NONE="\e[0m"
+
+## set_title: Updates terminal title with current user, host and directory
+function set_title() {
+    echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"
+}
+
+## Detect whether the current directory is a git repository.
+function is_git_repository {
+  git branch > /dev/null 2>&1
+}
+
+## Determine the branch/state information for this git repository.
+function set_git_branch {
+  ## Initialize variables to avoid persistence from previous calls
+  BRANCH=""
+  local branch=""
+  local remote=""
+  local state=""
+  
+  ## Capture the output of the "git status" command.
+  git_status="$(git status 2> /dev/null)"
+
+  ## Set color based on clean/staged/dirty.
+  if [[ ${git_status} =~ "working directory clean" || ${git_status} =~ "working tree clean" ]]; then
+    state="${GREEN}"
+  elif [[ ${git_status} =~ "Changes to be committed" ]]; then
+    state="${YELLOW}"
+  else
+    state="${LIGHT_RED}"
+  fi
+
+  ## Set arrow icon based on status against remote.
+  remote_pattern="Your branch is (.*) of"
+  if [[ ${git_status} =~ ${remote_pattern} ]]; then
+    if [[ ${BASH_REMATCH[1]} == "ahead" ]]; then
+      remote="↑"
+    else
+      remote="↓"
+    fi
+  fi
+  diverge_pattern="Your branch and (.*) have diverged"
+  if [[ ${git_status} =~ ${diverge_pattern} ]]; then
+    remote="↕"
+  fi
+
+  ## Get the name of the branch.
+  branch_pattern="^On branch ([^${IFS}]*)"
+  if [[ ${git_status} =~ ${branch_pattern} ]]; then
+    branch=${BASH_REMATCH[1]}
+  fi
+
+  ## Set the final branch string.
+  BRANCH="(${branch})${remote}"
+}
+
+## Return the prompt symbol to use, colorized based on the return value of the previous command.
+function set_prompt_symbol () {
+  if test "$1" -eq 0 ; then
+      PROMPT_SYMBOL="\$"
+  else
+      PROMPT_SYMBOL="${LIGHT_RED}\$${COLOR_NONE}"
+  fi
+}
+
+## Determine active Python virtualenv details.
+function set_virtualenv () {
+  if test -z "$VIRTUAL_ENV" ; then
+      PYTHON_VIRTUALENV=""
+  else
+      PYTHON_VIRTUALENV="${BLUE}[V:$(basename $VIRTUAL_ENV)]${COLOR_NONE} "
+  fi
+}
+
+# Function to determine active Docker machine details.
+function set_docker_machine () {
+  if test -z "$DOCKER_MACHINE_NAME" ; then
+      DOCKER_MACHINE=""
+  else
+      DOCKER_MACHINE="${LIGHT_GRAY}[D:${DOCKER_MACHINE_NAME}]${COLOR_NONE} "
+  fi
+}
+
+## Show that we are in a screen
+function set_screen_session () {
+  if test -z "$STY" ; then
+      SCREEN_SESSION=""
+  else
+      SCREEN_SESSION="${LIGHT_GRAY}${STY}${COLOR_NONE} "
+  fi
+}
+
+## Determine active Python conda details.
+function set_conda () {
+  if test -z "$CONDA_PROMPT_MODIFIER" ; then
+      PYTHON_CONDA=""
+  else
+    CONDA_BASE_TEST="(base) "
+
+    ## We don't want to show anything if it is base
+    if [ "${CONDA_PROMPT_MODIFIER}" != "${CONDA_BASE_TEST}" ] ; then
+      ## Remove the brackets and the space at the end
+      CONDA_PROMPT_SIMPLE=$(echo -n "$CONDA_PROMPT_MODIFIER" | sed -e 's/(//; s/)//; s/ $//')
+      PYTHON_CONDA="${BLUE}[C:$CONDA_PROMPT_SIMPLE]${COLOR_NONE} "
+    else
+      PYTHON_CONDA=""
+    fi
+  fi
+}
+
+
+### MAIN
+
+function set_bash_prompt () {
+  ## Set the PROMPT_SYMBOL variable. We do this first so we don't lose the return value of the previous command.
+  set_prompt_symbol $?
+  set_virtualenv
+  set_docker_machine
+  set_conda
+  set_screen_session
+  
+  ## Check git status and set branch - IMPORTANT: Always reset BRANCH first
+  if is_git_repository ; then
+    set_git_branch
+  else
+    ## Clear the BRANCH variable when not in a git repository
+    BRANCH=''
+  fi
+  
+  ## Update terminal title
+  set_title
+
+  ## Set the bash prompt variable - using \[ and \] to properly wrap non-printing characters
+  ## This is crucial for readline to correctly calculate prompt length
+  PS1="\n\[${DOCKER_MACHINE}\]\[${PYTHON_VIRTUALENV}\]\[${PYTHON_CONDA}\]\[${GREEN}\]\u@\h \[${LIGHT_GRAY}\]\A \[${SCREEN_SESSION}\]\w\[${COLOR_NONE}\] \[${RED}\]${BRANCH}\n\[${COLOR_NONE}\]${PROMPT_SYMBOL} "
+}
+
+## Enable history syncing without disrupting prompt - append to PROMPT_COMMAND
+## This is crucial for history navigation - adds history to file immediately
+## We append instead of overwrite to preserve VTE terminal tracking and other integrations
+if [[ -z "$PROMPT_COMMAND" ]]; then
+  PROMPT_COMMAND="history -a; set_bash_prompt"
+else
+  # Check if set_bash_prompt is already in PROMPT_COMMAND to avoid duplicates
+  if [[ "$PROMPT_COMMAND" != *"set_bash_prompt"* ]]; then
+    PROMPT_COMMAND="${PROMPT_COMMAND}; history -a; set_bash_prompt"
+  fi
+fi

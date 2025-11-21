@@ -1,0 +1,71 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║           Enhanced Bash Configuration - Quick Reference           ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+GETTING HELP
+────────────
+  bashrc-help         Full help with all commands
+  bashrc-doctor       Check configuration health  
+  bashrc-version      Show version and updates
+  list-aliases        List all shortcuts
+  man <command>       Command manual
+
+NAVIGATION
+──────────
+  ..                  Go up one directory
+  ...                 Go up two directories
+  ll                  Detailed file list
+  la                  Show hidden files
+  lsd                 List only directories
+
+FILE OPERATIONS
+───────────────
+  extract <file>      Extract any archive
+  rm <file>           Delete (asks confirmation)
+  cp <src> <dst>      Copy (asks confirmation)
+  mv <src> <dst>      Move (asks confirmation)
+
+GIT SHORTCUTS
+─────────────
+  gs                  Git status
+  ga <file>           Git add
+  gc -m "msg"         Git commit
+  gp                  Git push
+  gl                  Git pull
+  glog                Pretty git log
+  gst                 Enhanced git status
+
+SYSTEM INFO
+───────────
+  sysinfo             Full system information
+  resources           Current resource usage
+  meminfo             Memory information
+  ports               Show open network ports
+  psg <name>          Search for process
+
+CONFIGURATION
+─────────────
+  updatebash          Update configuration
+  updatebash-preview  Preview updates
+  bashrc-backup       Create manual backup
+  restorebash --list  Show backups
+  restorebash --latest Restore last backup
+  bashrc-profile      Performance analysis
+
+CUSTOMIZATION
+─────────────
+  ~/.bashrc-custom    Your customization file
+  ~/.config/bashrc/   Component configs
+
+EXAMPLES
+────────
+  cd /path && ll                    # Navigate and list
+  extract file.tar.gz               # Extract archive
+  gst                               # Check git status
+  bashrc-doctor                     # Health check
+  ps aux | grep python              # Find processes
+  find . -name "*.py"               # Find files
+  du -sh *                          # Folder sizes
+  
+For detailed help: bashrc-help
+For issues: less /opt/bashrc/TROUBLESHOOTING.md

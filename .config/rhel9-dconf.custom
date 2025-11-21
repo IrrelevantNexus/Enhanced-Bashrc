@@ -1,0 +1,72 @@
+## This file is referenced by .bash_profile. if you are in a GUI environment, upon login these settings will be loaded, and then this file is DELETED.
+## To see all the dconf settings, you can use the following command:
+##   $ dconf dump / > ~/dconf.out
+##
+
+[org/gnome/desktop/calendar]
+show-weekdate=true
+
+[org/gnome/desktop/interface]
+clock-show-date=true
+clock-show-seconds=true
+clock-show-weekday=true
+font-antialiasing='grayscale'
+font-hinting='slight'
+gtk-theme='Adwaita-dark'
+icon-theme='Adwaita'
+
+[org/gnome/desktop/notifications]
+application-children=['org-gnome-nautilus', 'org-gnome-gedit', 'firefox', 'google-chrome', 'org-gnome-terminal', 'libreoffice-calc', 'org-gnome-screenshot', 'scap-workbench', 'org-gnome-software']
+show-in-lock-screen=false
+
+[org/gnome/desktop/notifications/application/org-gnome-software]
+application-id='org.gnome.Software.desktop'
+
+[org/gnome/desktop/peripherals/keyboard]
+numlock-state=false
+
+[org/gnome/desktop/peripherals/touchpad]
+two-finger-scrolling-enabled=true
+
+[org/gnome/desktop/privacy]
+remove-old-temp-files=true
+remove-old-trash-files=true
+
+[org/gnome/desktop/search-providers]
+disable-external=false
+sort-order=['']
+
+[org/gnome/desktop/wm/keybindings]
+switch-applications=['<Alt>Tab']
+switch-applications-backward=['<Shift><Alt>Tab']
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+
+[org/gnome/gedit/preferences/editor]
+create-backup-copy=true
+insert-spaces=true
+scheme='cobalt'
+
+[org/gnome/nautilus/list-view]
+use-tree-view=true
+
+[org/gnome/nautilus/preferences]
+default-folder-viewer='icon-view'
+search-filter-time-type='last_modified'
+
+[org/gnome/settings-daemon/plugins/media-keys]
+screensaver=['<Super>l']
+
+[org/gnome/shell/extensions/pop-shell]
+active-hint=false
+focus-right=['<Super>Right']
+gap-inner=uint32 0
+gap-outer=uint32 0
+tile-by-default=true
+
+[org/gnome/software]
+first-run=false
+
+[org/gtk/settings/file-chooser]
+sort-directories-first=true

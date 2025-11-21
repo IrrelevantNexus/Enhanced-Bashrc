@@ -1,0 +1,185 @@
+## This file is referenced by .bash_profile. if you are in a GUI environment, upon login these settings will be loaded, and then this file is DELETED.
+## To see all the dconf settings, you can use the following command:
+##   $ dconf dump / > ~/dconf.out
+##
+## RHEL 10 / GNOME 46+ Configuration
+
+[org/gnome/desktop/calendar]
+show-weekdate=true
+
+[org/gnome/desktop/interface]
+clock-show-date=true
+clock-show-seconds=true
+clock-show-weekday=true
+color-scheme='prefer-dark'
+enable-hot-corners=false
+font-antialiasing='rgba'
+font-hinting='slight'
+gtk-theme='Adwaita-dark'
+icon-theme='Adwaita'
+show-battery-percentage=true
+
+[org/gnome/desktop/notifications]
+application-children=['org-gnome-nautilus', 'org-gnome-gedit', 'firefox', 'google-chrome', 'org-gnome-terminal', 'org-gnome-console', 'libreoffice-calc', 'org-gnome-screenshot', 'scap-workbench', 'org-gnome-software']
+show-banners=true
+show-in-lock-screen=false
+
+[org/gnome/desktop/notifications/application/org-gnome-software]
+application-id='org.gnome.Software.desktop'
+
+[org/gnome/desktop/peripherals/keyboard]
+numlock-state=false
+
+[org/gnome/desktop/peripherals/mouse]
+accel-profile='flat'
+natural-scroll=false
+
+[org/gnome/desktop/peripherals/touchpad]
+click-method='areas'
+natural-scroll=true
+tap-to-click=true
+two-finger-scrolling-enabled=true
+
+[org/gnome/desktop/privacy]
+old-files-age=uint32 30
+recent-files-max-age=30
+remove-old-temp-files=true
+remove-old-trash-files=true
+report-technical-problems=false
+
+[org/gnome/desktop/screensaver]
+lock-delay=uint32 300
+lock-enabled=true
+
+[org/gnome/desktop/search-providers]
+disable-external=false
+sort-order=['org.gnome.Contacts.desktop', 'org.gnome.Documents.desktop', 'org.gnome.Nautilus.desktop']
+
+[org/gnome/desktop/session]
+idle-delay=uint32 900
+
+[org/gnome/desktop/sound]
+allow-volume-above-100-percent=false
+event-sounds=true
+
+[org/gnome/desktop/wm/keybindings]
+close=['<Super>q', '<Alt>F4']
+maximize=['<Super>Up']
+minimize=['<Super>h']
+move-to-workspace-1=['<Shift><Super>exclam']
+move-to-workspace-2=['<Shift><Super>at']
+move-to-workspace-3=['<Shift><Super>numbersign']
+move-to-workspace-4=['<Shift><Super>dollar']
+switch-applications=['<Alt>Tab']
+switch-applications-backward=['<Shift><Alt>Tab']
+switch-to-workspace-1=['<Super>1']
+switch-to-workspace-2=['<Super>2']
+switch-to-workspace-3=['<Super>3']
+switch-to-workspace-4=['<Super>4']
+toggle-fullscreen=['F11']
+toggle-maximized=['<Super>m']
+unmaximize=['<Super>Down']
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+focus-mode='click'
+resize-with-right-button=true
+
+[org/gnome/gedit/preferences/editor]
+auto-indent=true
+auto-save=true
+bracket-matching=true
+create-backup-copy=true
+display-line-numbers=true
+display-right-margin=true
+highlight-current-line=true
+insert-spaces=true
+right-margin-position=uint32 80
+scheme='cobalt'
+tabs-size=uint32 4
+wrap-mode='word'
+
+[org/gnome/mutter]
+center-new-windows=true
+dynamic-workspaces=true
+edge-tiling=true
+
+[org/gnome/nautilus/list-view]
+default-zoom-level='standard'
+use-tree-view=true
+
+[org/gnome/nautilus/preferences]
+default-folder-viewer='list-view'
+search-filter-time-type='last_modified'
+search-view='list-view'
+show-create-link=true
+show-delete-permanently=true
+
+[org/gnome/settings-daemon/plugins/color]
+night-light-enabled=true
+night-light-schedule-automatic=true
+night-light-temperature=uint32 4000
+
+[org/gnome/settings-daemon/plugins/media-keys]
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']
+home=['<Super>e']
+screensaver=['<Super>l']
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0]
+binding='<Primary><Alt>t'
+command='gnome-terminal'
+name='Open Terminal'
+
+[org/gnome/settings-daemon/plugins/power]
+idle-dim=true
+power-button-action='interactive'
+sleep-inactive-ac-timeout=3600
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-timeout=1200
+sleep-inactive-battery-type='suspend'
+
+[org/gnome/shell]
+disable-user-extensions=false
+enabled-extensions=['background-logo@fedorahosted.org', 'apps-menu@gnome-shell-extensions.gcampax.github.com', 'window-list@gnome-shell-extensions.gcampax.github.com']
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.gedit.desktop', 'org.gnome.Software.desktop']
+
+[org/gnome/shell/app-switcher]
+current-workspace-only=false
+
+[org/gnome/shell/extensions/pop-shell]
+active-hint=false
+focus-right=['<Super>Right']
+gap-inner=uint32 0
+gap-outer=uint32 0
+tile-by-default=true
+
+[org/gnome/software]
+download-updates=false
+first-run=false
+
+[org/gnome/system/location]
+enabled=false
+
+[org/gnome/terminal/legacy]
+theme-variant='dark'
+
+[org/gnome/terminal/legacy/profiles:/:b1dcc9dd-5262-4d8d-a863-c897e6d979b9]
+audible-bell=false
+background-color='rgb(0,0,0)'
+bold-is-bright=true
+cursor-blink-mode='on'
+cursor-shape='block'
+font='Monospace 11'
+foreground-color='rgb(255,255,255)'
+scrollback-unlimited=true
+use-system-font=false
+use-theme-colors=false
+visible-name='Default'
+
+[org/gtk/gtk4/settings/file-chooser]
+show-hidden=false
+sort-directories-first=true
+
+[org/gtk/settings/file-chooser]
+show-hidden=false
+sort-directories-first=true

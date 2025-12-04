@@ -6,8 +6,8 @@
 ## It handles updates, customization, and core functionality.
 
 ## Version information
-export BASHRC_VERSION="1.1.7"
-export BASHRC_LAST_UPDATE="2025-11-18"
+export BASHRC_VERSION="1.1.8"
+export BASHRC_LAST_UPDATE="2025-12-04"
 
 ### UPDATING
 
@@ -113,9 +113,9 @@ function set_MOTD () {
       update_available)
         # Verify the status is still accurate before displaying banner
         if [ -d "/opt/bashrc/.git" ]; then
-          local LOCAL=$(cd /opt/bashrc && git rev-parse @ 2>/dev/null)
-          local REMOTE=$(cd /opt/bashrc && git rev-parse @{u} 2>/dev/null)
-          if [ -n "$LOCAL" ] && [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
+          local LOCAL_TIME=$(cd /opt/bashrc && git log -1 --format=%ct 2>/dev/null)
+          local REMOTE_TIME=$(cd /opt/bashrc && git log -1 --format=%ct @{u} 2>/dev/null)
+          if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ] && [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
             # Update is truly available
             printf "${TXTCOLOR}Bash Configuration Update:${TXTWHT} An update is available. Run ${TXTCOLOR}updatebash${TXTWHT} to install.\n\n"
           else
@@ -159,13 +159,13 @@ function bashrc-version() {
     echo "Location: $(readlink -f ~/.bashrc 2>/dev/null || echo ~/.bashrc)"
     echo ""
     
-    # Check if update available by comparing git commits
+    # Check if update available by comparing commit timestamps
     if [ -d "/opt/bashrc/.git" ]; then
-        local LOCAL=$(cd /opt/bashrc && git rev-parse @ 2>/dev/null)
-        local REMOTE=$(cd /opt/bashrc && git rev-parse @{u} 2>/dev/null)
+        local LOCAL_TIME=$(cd /opt/bashrc && git log -1 --format=%ct 2>/dev/null)
+        local REMOTE_TIME=$(cd /opt/bashrc && git log -1 --format=%ct @{u} 2>/dev/null)
         
-        if [ -n "$LOCAL" ] && [ -n "$REMOTE" ]; then
-            if [ "$LOCAL" != "$REMOTE" ]; then
+        if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ]; then
+            if [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
                 local REPO_VERSION=$(grep "^export BASHRC_VERSION=" /opt/bashrc/.bashrc 2>/dev/null | cut -d'"' -f2)
                 echo -e "${YELLOW}Update available: ${REPO_VERSION:-unknown version}${TXTWHT}"
                 echo "Run 'updatebash' to install the latest version"

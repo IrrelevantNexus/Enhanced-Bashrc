@@ -57,11 +57,11 @@ if [[ $- == *i* ]]; then
       if timeout --version > /dev/null 2>&1; then
         # timeout command is available (most modern systems)
         if timeout 120 git remote update > /dev/null 2>&1; then
-          UPSTREAM=${1:-'@{u}'}
-          LOCAL=$(git rev-parse @ 2>/dev/null)
-          REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "$LOCAL")
+          # Compare commit timestamps instead of hashes
+          LOCAL_TIME=$(git log -1 --format=%ct 2>/dev/null)
+          REMOTE_TIME=$(git log -1 --format=%ct @{u} 2>/dev/null)
           
-          if [ "$LOCAL" != "$REMOTE" ]; then
+          if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ] && [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
             echo "update_available" > "$UPDATE_STATUS_FILE"
           else
             echo "no_update" > "$UPDATE_STATUS_FILE"
@@ -89,11 +89,11 @@ if [[ $- == *i* ]]; then
           # Completed successfully
           wait $git_pid
           if [ $? -eq 0 ]; then
-            UPSTREAM=${1:-'@{u}'}
-            LOCAL=$(git rev-parse @ 2>/dev/null)
-            REMOTE=$(git rev-parse "$UPSTREAM" 2>/dev/null || echo "$LOCAL")
+            # Compare commit timestamps instead of hashes
+            LOCAL_TIME=$(git log -1 --format=%ct 2>/dev/null)
+            REMOTE_TIME=$(git log -1 --format=%ct @{u} 2>/dev/null)
             
-            if [ "$LOCAL" != "$REMOTE" ]; then
+            if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ] && [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
               echo "update_available" > "$UPDATE_STATUS_FILE"
             else
               echo "no_update" > "$UPDATE_STATUS_FILE"

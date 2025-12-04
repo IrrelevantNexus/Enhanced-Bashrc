@@ -106,14 +106,11 @@ if [ ! -d "/opt/bashrc" ]; then
     else
       if [ "$PREVIEW_MODE" = false ]; then
         if ! command -v git > /dev/null 2>&1 ; then
-          echo -e "${RED}Error: git is not installed. Please install git to continue.${NC}"
-          exit 1
-        fi
-        if git clone --depth=1 --branch "$DEFAULT_BRANCH" "$UPSTREAM_URL" /opt/bashrc; then
+          echo -e "${YELLOW}Warning: git is not installed. Skipping /opt/bashrc clone, continuing with installation.${NC}"
+        elif git clone --depth=1 --branch "$DEFAULT_BRANCH" "$UPSTREAM_URL" /opt/bashrc; then
           echo -e "${GREEN}Repository cloned to /opt/bashrc successfully from $UPSTREAM_URL ($DEFAULT_BRANCH).${NC}"
         else
-          echo -e "${RED}Failed to clone repository to /opt/bashrc.${NC}"
-          exit 1
+          echo -e "${YELLOW}Warning: Failed to clone repository to /opt/bashrc. Continuing with installation.${NC}"
         fi
       else
         echo -e "${YELLOW}[Preview] Would clone $UPSTREAM_URL ($DEFAULT_BRANCH) to /opt/bashrc${NC}"
@@ -135,7 +132,7 @@ if [ "$PREVIEW_MODE" = true ]; then
 fi
 
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║     Enhanced Bash Configuration Installer v1.0.0           ║${NC}"
+echo -e "${GREEN}║     Enhanced Bash Configuration Installer v1.1.0           ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo "This installer will configure your bash environment with:"

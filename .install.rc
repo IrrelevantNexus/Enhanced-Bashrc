@@ -239,8 +239,9 @@ function placefile() {
   fi
   
   # Get just the filename without the path for backup
+  # Use full timestamp (not just date) so multiple installs in one day don't clobber each other
   local filename=$(basename "$FILE")
-  local backup_path="$BACKUP_DIR/$filename.$(date -I).bkup"
+  local backup_path="$BACKUP_DIR/$filename.$(date +%F-%H%M%S).bkup"
   printf "${YELLOW}Backing up existing %s to %s${NC}\n" "$FILE" "$backup_path"
   if ! mv "$HOME/$FILE" "$backup_path" > /dev/null 2>&1; then
     echo -e "${YELLOW}No existing file to backup${NC}"
@@ -332,8 +333,8 @@ function install() {
       fi
     fi
   elif [ -f "$HOME/$FILE" ]; then
-    current_checksum=$(sha256sum "$HOME/$FILE" > /dev/null 2>&1 | awk '{ print $1 }')
-    update_checksum=$(sha256sum "$WORKINGDIR/$FILE" | awk '{ print $1 }')
+    current_checksum=$(sha256sum "$HOME/$FILE" 2>/dev/null | awk '{ print $1 }')
+    update_checksum=$(sha256sum "$WORKINGDIR/$FILE" 2>/dev/null | awk '{ print $1 }')
     if [ "$current_checksum" = "$update_checksum" ]; then
       echo "You are already using the up to date version of ~/$FILE..."
     fi

@@ -6,8 +6,9 @@
 ## It handles updates, customization, and core functionality.
 
 ## Version information
-export BASHRC_VERSION="1.1.8"
-export BASHRC_LAST_UPDATE="2025-12-04"
+
+export BASHRC_VERSION="1.2.1"
+export BASHRC_LAST_UPDATE="2026-02-19"
 
 ### UPDATING
 
@@ -34,7 +35,7 @@ ALLOWUPDATE='True'
 AutoUpdateBash='True'
 
 ## If you prefer doing things your own way, no worries. Feel free to configure the contents of ~/.config/bashrc/, this file, as well as .bash_profile as you please.
-## If you are the type of person to do so, I'd love to see what you have! -MLilly
+## If you are the type of person to do so, I'd love to see what you have!
 ## If you have suggestions feel free to submit feedback on the Issues board in the GitLab Repo, or reach out on Teams!
 
 
@@ -145,9 +146,12 @@ function set_MOTD () {
 # /opt/motd allows anyone to bradcast messages on this workstation. Enjoy.
 function set_WKSTMOTD () {
   if [[ -s /opt/motd ]]; then
-    printf "${TXTCOLOR}Local messages from /opt/motd:${TXTWHT}\n"
-    cat '/opt/motd'
-    printf "\n"
+    # Skip if file only contains blank characters (spaces, tabs, newlines)
+    if [[ -n $(tr -d '[:space:]' < /opt/motd) ]]; then
+      printf "${TXTCOLOR}Local messages from /opt/motd:${TXTWHT}\n"
+      cat '/opt/motd'
+      printf "\n"
+    fi
   fi
 }
 

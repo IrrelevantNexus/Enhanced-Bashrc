@@ -63,6 +63,17 @@ if [[ $- == *i* ]]; then
           
           if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ] && [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
             echo "update_available" > "$UPDATE_STATUS_FILE"
+            
+            # Check if AutoUpdateBash is enabled and automatically install
+            if [ -f "$HOME/.bashrc" ]; then
+              AUTO_UPDATE=$(grep "^AutoUpdateBash=" "$HOME/.bashrc" 2>/dev/null | cut -d"'" -f2)
+              if [[ "${AUTO_UPDATE,,}" = "true" ]]; then
+                # Run the update installation
+                if [ -x "/opt/bashrc/INSTALL.sh" ]; then
+                  /opt/bashrc/INSTALL.sh y > /dev/null 2>&1
+                fi
+              fi
+            fi
           else
             echo "no_update" > "$UPDATE_STATUS_FILE"
           fi
@@ -95,6 +106,17 @@ if [[ $- == *i* ]]; then
             
             if [ -n "$LOCAL_TIME" ] && [ -n "$REMOTE_TIME" ] && [ "$REMOTE_TIME" -gt "$LOCAL_TIME" ]; then
               echo "update_available" > "$UPDATE_STATUS_FILE"
+              
+              # Check if AutoUpdateBash is enabled and automatically install
+              if [ -f "$HOME/.bashrc" ]; then
+                AUTO_UPDATE=$(grep "^AutoUpdateBash=" "$HOME/.bashrc" 2>/dev/null | cut -d"'" -f2)
+                if [[ "${AUTO_UPDATE,,}" = "true" ]]; then
+                  # Run the update installation
+                  if [ -x "/opt/bashrc/INSTALL.sh" ]; then
+                    /opt/bashrc/INSTALL.sh y > /dev/null 2>&1
+                  fi
+                fi
+              fi
             else
               echo "no_update" > "$UPDATE_STATUS_FILE"
             fi
@@ -144,16 +166,15 @@ fi
 ## Want to save your current gnome setup?
 ##  $ dconf dump / > $HOME/.config/dconf.custom
 
-if [[ $XDG_CURRENT_DESKTOP == *"GNOME"* ]] && [[ -z "$TMUX" ]]; then 
-  if [ -f /etc/dconf/dconf.global ]; then
-    dconf load / < /etc/dconf/dconf.global > /dev/null 2>&1
-  fi
-  if [ -f "$HOME/.config/dconf.custom" ]; then
+if [[ $XDG_CURRENT_DESKTOP == *"GNOME"* ]] && [[ -z "$TMUX" ]]; then
+  # Load dconf whenever dconf.custom has content (initial install or user edits)
+  # dconf.initial is a legacy flag from INSTALL.sh; presence still triggers a load
+  if [ -f "$HOME/.config/dconf.custom" ] && [ -s "$HOME/.config/dconf.custom" ]; then
     dconf load / < "$HOME/.config/dconf.custom" > /dev/null 2>&1
+    rm -f "$HOME/.config/dconf.initial"
     echo '' > "$HOME/.config/dconf.custom"
   fi
 fi
-
 
 ### BASH
 

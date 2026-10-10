@@ -1,6 +1,6 @@
 # Enhanced Bash Configuration
 
-A comprehensive bash configuration system with smart prompts, useful aliases, and sane defaults.
+A comprehensive bash configuration system with smart prompts, useful aliases, and sane defaults. Included in RHEL baseline deployed from /opt/bashrc and implemented in /etc/skel.
 
 ## Quick Start
 

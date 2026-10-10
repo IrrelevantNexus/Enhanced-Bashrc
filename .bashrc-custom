@@ -18,13 +18,40 @@ ALLOWUPDATE='False'
 
 
 # The /etc/profile.d/ directory is used to set system-wide environmental variables on users' shells and execute scripts within it.
+# Some distros (e.g. Arch/CachyOS) define append_path/prepend_path helpers in /etc/profile itself and unset them
+# afterward, so scripts in /etc/profile.d rely on those helpers only existing during /etc/profile's own sourcing pass.
+# Since we source profile.d scripts independently here, define fallbacks so those scripts don't fail with
+# "command not found" when this file is re-sourced outside of /etc/profile's context.
 if [ -d /etc/profile.d ]; then
+    if ! type append_path &>/dev/null; then
+        append_path () {
+            case ":$PATH:" in
+                *:"$1":*) ;;
+                *) PATH="${PATH:+$PATH:}$1" ;;
+            esac
+        }
+        __bashrc_custom_unset_append_path=1
+    fi
+    if ! type prepend_path &>/dev/null; then
+        prepend_path () {
+            case ":$PATH:" in
+                *:"$1":*) ;;
+                *) PATH="$1${PATH:+:$PATH}" ;;
+            esac
+        }
+        __bashrc_custom_unset_prepend_path=1
+    fi
+
     for i in /etc/profile.d/*.sh; do
         if [ -r $i ]; then
             . $i
         fi
     done
     unset i
+
+    [ -n "$__bashrc_custom_unset_append_path" ] && unset -f append_path
+    [ -n "$__bashrc_custom_unset_prepend_path" ] && unset -f prepend_path
+    unset __bashrc_custom_unset_append_path __bashrc_custom_unset_prepend_path
 fi
 
 
@@ -40,7 +67,23 @@ fi
 # Utility functions (help, backup, doctor, etc.)
 . $HOME/.config/bashrc/utilities.rc
 
-## Python Configuration
+
+### AutoFS Adjustments
+## Chrome Lock
+if [ -f $HOME/.config/google-chrome/SingletonLock ]; then
+  rm -f $HOME/.config/google-chrome/SingletonLock
+fi
+if [ -f $HOME/.config/google-chrome/$HOSTNAME/SingletonLock ]; then
+  rm -f $HOME/.config/google-chrome/$HOSTNAME/SingletonLock
+fi
+
+## Firefox
+if [ ! -d $HOME/.mozilla/firefox/$HOSTNAME ]; then
+  mkdir -p $HOME/.mozilla/firefox/$HOSTNAME
+fi
+
+
+### Python Configuration
 ## Sets up Python environment with sane defaults and pyenv integration
 alias python='python3'
 
@@ -49,9 +92,16 @@ if [ -d $HOME/.pyenv ]; then
   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
   eval "$(pyenv init - bash)"
 else
-  # Notify user about pyenv if Python development is detected
+  # Notify user about pyenv if Python development is detected (capped at 5 shells to avoid nagging)
   if command -v python3 &>/dev/null && [ -d "$HOME/*/setup.py" -o -f "$HOME/requirements.txt" ]; then
-    echo "Note: pyenv is not installed. Consider installing it for better Python version management."
+    pyenv_notice_count_file="$HOME/.config/bashrc/pyenv_notice_count"
+    pyenv_notice_count=$(cat "$pyenv_notice_count_file" 2>/dev/null || echo 0)
+    if [ "$pyenv_notice_count" -lt 5 ]; then
+      echo "Note: pyenv is not installed. Consider installing it for better Python version management."
+      mkdir -p "$HOME/.config/bashrc"
+      echo $((pyenv_notice_count + 1)) > "$pyenv_notice_count_file"
+    fi
+    unset pyenv_notice_count_file pyenv_notice_count
   fi
 fi
 
@@ -63,11 +113,11 @@ if command -v python3 &>/dev/null; then
     export PYTHONUNBUFFERED=1
 fi
 
-## Development Environment
+### Development Environment
 ## Configure standard development tools and preferences
 export EDITOR='vim'
 export VISUAL='vim'
 export PAGER='less'
 
-## Custom Content
+### Custom Content
 ## Add your personalizations below this line

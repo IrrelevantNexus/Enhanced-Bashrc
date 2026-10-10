@@ -5,6 +5,31 @@ BACKUP_DIR="$HOME/.config/bashrc/backups"
 # PREVIEW_MODE should be set by INSTALL.sh
 PREVIEW_MODE=${PREVIEW_MODE:-false}
 
+# Set during check(): true only when this looks like a first-time install.
+IS_NEW_INSTALL=false
+
+# Safe replacement for 'sed -i' that works when the target directory is not
+# writable. sed -i creates a temp file in the same directory as the target;
+# this helper uses /tmp instead, then writes changes back with cat.
+function safe_sed_i() {
+  local expression="$1"
+  local file="$2"
+  local tmpfile
+  tmpfile=$(mktemp) || return 1
+  if sed "$expression" "$file" > "$tmpfile" 2>/dev/null; then
+    cat "$tmpfile" > "$file" 2>/dev/null
+    local rc=$?
+    rm -f "$tmpfile"
+    return $rc
+  else
+    rm -f "$tmpfile"
+    return 1
+  fi
+}
+
+# can_elevate_privileges() and run_with_privileges() are defined in INSTALL.sh
+# (sourced before this file) so update() can reuse them too.
+
 function handle_install_error() {
     local file=$1
     local error_type=$2
@@ -102,6 +127,12 @@ function validate_prerequisites() {
 
 function check() {
   echo "Checking installation prerequisites..."
+
+  # Treat missing ~/.config/bashrc as first-time install. If it already exists,
+  # this run is considered an update and first-run assets should not redeploy.
+  if [ ! -d "$HOME/.config/bashrc" ]; then
+    IS_NEW_INSTALL=true
+  fi
   
   ## ~/.config/bashrc directory
   if [ ! -d "$HOME/.config/bashrc" ]; then
@@ -141,13 +172,56 @@ function check() {
     echo -e "${GREEN}Moved $legacy_count legacy backup files to $BACKUP_DIR${NC}"
   fi
 
-  ## dconf
-  if [ ! -f "$HOME/.config/dconf.custom" ]; then
-    echo "Setting up GNOME desktop configuration..."
-    if [ -f "$WORKINGDIR/.config/dconf.custom" ]; then
-      cp "$WORKINGDIR/.config/dconf.custom" "$HOME/.config/dconf.custom"
+  ## dconf (new installs only)
+  if [ "$IS_NEW_INSTALL" = true ] && [ ! -f "$HOME/.config/dconf.custom" ]; then
+    # Detect RHEL version and use the appropriate dconf template
+    DCONF_SOURCE=""
+    if [ -f /etc/os-release ]; then
+      . /etc/os-release
+      if [[ "$ID" == "rhel" ]] || [[ "$ID_LIKE" == *"rhel"* ]]; then
+        RHEL_VERSION=$(echo "$VERSION_ID" | cut -d. -f1)
+        if [ -f "$WORKINGDIR/.config/rhel${RHEL_VERSION}-dconf.custom" ]; then
+          DCONF_SOURCE="$WORKINGDIR/.config/rhel${RHEL_VERSION}-dconf.custom"
+        fi
+      fi
+    fi
+
+    # Fallback to generic dconf.custom if version-specific not found
+    if [ -z "$DCONF_SOURCE" ] && [ -f "$WORKINGDIR/.config/dconf.custom" ]; then
+      DCONF_SOURCE="$WORKINGDIR/.config/dconf.custom"
+    fi
+
+    if [ "$PREVIEW_MODE" = true ]; then
+      if [ -n "$DCONF_SOURCE" ]; then
+        echo "[PREVIEW] New install detected: would deploy GNOME desktop configuration from $(basename "$DCONF_SOURCE")."
+      else
+        echo -e "${YELLOW}[PREVIEW] New install detected, but no GNOME desktop configuration template was found.${NC}"
+      fi
     else
-      echo -e "${YELLOW}Warning: GNOME desktop configuration template not found${NC}"
+      echo "Setting up GNOME desktop configuration..."
+      if [ -n "$DCONF_SOURCE" ]; then
+        cp "$DCONF_SOURCE" "$HOME/.config/dconf.custom"
+        # Create flag file to indicate initial install (dconf should be loaded once)
+        touch "$HOME/.config/dconf.initial"
+        echo "Copied $(basename "$DCONF_SOURCE") to ~/.config/dconf.custom"
+        echo "GNOME settings will be loaded on next login"
+      else
+        echo -e "${YELLOW}Warning: GNOME desktop configuration template not found${NC}"
+      fi
+    fi
+  else
+    if [ "$IS_NEW_INSTALL" = true ]; then
+      if [ "$PREVIEW_MODE" = true ]; then
+        echo "[PREVIEW] New install detected, but GNOME desktop configuration already exists; would skip deployment."
+      else
+        echo "GNOME desktop configuration already exists, skipping..."
+      fi
+    else
+      if [ "$PREVIEW_MODE" = true ]; then
+        echo "[PREVIEW] Update detected: would skip GNOME desktop configuration deployment."
+      else
+        echo "Skipping GNOME desktop configuration deployment during update."
+      fi
     fi
   fi
 
@@ -172,6 +246,12 @@ function placefile() {
     echo -e "${YELLOW}No existing file to backup${NC}"
   fi
   
+  # Preserve AutoUpdateBash setting if updating .bashrc
+  local saved_autoupdate=""
+  if [[ "$FILE" == ".bashrc" ]] && [ -f "$backup_path" ]; then
+    saved_autoupdate=$(grep "^AutoUpdateBash=" "$backup_path" 2>/dev/null | cut -d"'" -f2)
+  fi
+  
   printf "${GREEN}Installing new %s${NC}\n" "$FILE"
   # Use rsync if available, otherwise fall back to cp
   if command -v rsync &> /dev/null; then
@@ -184,6 +264,12 @@ function placefile() {
       echo -e "${RED}Failed to copy $FILE. Check permissions and disk space.${NC}"
       return 1
     fi
+  fi
+  
+  # Restore AutoUpdateBash setting if it was False/false
+  if [[ "$FILE" == ".bashrc" ]] && [[ "${saved_autoupdate,,}" == "false" ]]; then
+    safe_sed_i "s/^AutoUpdateBash=.*/AutoUpdateBash='$saved_autoupdate'/" "$HOME/$FILE"
+    echo -e "${GREEN}Preserved AutoUpdateBash='$saved_autoupdate' setting${NC}"
   fi
   
   # Only try to source bash script files, not text files or other non-executable content
@@ -255,6 +341,7 @@ function install() {
       echo "Your ~/$FILE differs from what is provided with this installer."
       
       # Check for ALLOWUPDATE setting
+      # Note: while "#ALLOWUPDATE" is filtered out, "# ALLOWUPDATE" is not. "# ALLOWUPDATE" is used in .tmux.conf for example.
       local has_allowupdate=$(cat "$HOME/$FILE" | grep -v '#ALLOWUPDATE' | grep 'ALLOWUPDATE')
       local allowupdate_true=$(echo "$has_allowupdate" | grep -i 'true')
       local allowupdate_false=$(echo "$has_allowupdate" | grep -i 'false')
@@ -289,26 +376,26 @@ function install() {
 ### Fixes for legacy files
 
 function fix_history_search() {
-  local settings_file="$WORKINGDIR/.config/bashrc/settings.rc"
-  local prompt_file="$WORKINGDIR/.config/bashrc/prompt.rc"
+  local settings_file="$HOME/.config/bashrc/settings.rc"
+  local prompt_file="$HOME/.config/bashrc/prompt.rc"
   
   # Fix settings.rc file
   if [ -f "$settings_file" ]; then
     echo -e "${YELLOW}Fixing keyboard navigation bindings...${NC}"
     
     # Replace history-search commands with standard history navigation
-    sed -i 's/bind ."\\\e\[A": history-search-backward./bind '\''\\\e\[A": previous-history'\''/g' "$settings_file"
-    sed -i 's/bind ."\\\e\[B": history-search-forward./bind '\''\\\e\[B": next-history'\''/g' "$settings_file"
+    safe_sed_i 's/bind ."\\\e\[A": history-search-backward./bind '\''\\\e\[A": previous-history'\''/g' "$settings_file"
+    safe_sed_i 's/bind ."\\\e\[B": history-search-forward./bind '\''\\\e\[B": next-history'\''/g' "$settings_file"
     
     # Add proper Home and End key bindings if missing
     grep -q "bind .\"\\\\e\[1~\": beginning-of-line" "$settings_file" || \
-      sed -i '/bind ."\\\e\[C": forward-char./a bind '\''\\\e[1~": beginning-of-line'\''' "$settings_file"
+      safe_sed_i '/bind ."\\\e\[C": forward-char./a bind '\''\\\e[1~": beginning-of-line'\''' "$settings_file"
     grep -q "bind .\"\\\\e\[4~\": end-of-line" "$settings_file" || \
-      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[4~": end-of-line'\''' "$settings_file"
+      safe_sed_i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[4~": end-of-line'\''' "$settings_file"
     grep -q "bind .\"\\\\e\[H\": beginning-of-line" "$settings_file" || \
-      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[H": beginning-of-line'\''' "$settings_file"
+      safe_sed_i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[H": beginning-of-line'\''' "$settings_file"
     grep -q "bind .\"\\\\e\[F\": end-of-line" "$settings_file" || \
-      sed -i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[F": end-of-line'\''' "$settings_file"
+      safe_sed_i '/bind ."\\\e\[D": backward-char./a bind '\''\\\e[F": end-of-line'\''' "$settings_file"
     
     echo -e "${GREEN}Keyboard navigation bindings fixed${NC}"
   else
@@ -321,22 +408,74 @@ function fix_history_search() {
     
     # Update PROMPT_COMMAND to include history -a for immediate history saving
     if grep -q "^PROMPT_COMMAND=set_bash_prompt" "$prompt_file"; then
-      sed -i 's/^PROMPT_COMMAND=set_bash_prompt/PROMPT_COMMAND="history -a; set_bash_prompt"/' "$prompt_file"
+      safe_sed_i 's/^PROMPT_COMMAND=set_bash_prompt/PROMPT_COMMAND="history -a; set_bash_prompt"/' "$prompt_file"
     fi
     
     # Fix PS1 format to properly wrap non-printing characters for readline
     if grep -q 'PS1="' "$prompt_file"; then
       # Only apply if we haven't already fixed it (check for existing formatting)
       if ! grep -F '\[' "$prompt_file" >/dev/null; then
-        sed -i 's/PS1="\n\([^"]*\)"/PS1="\\n\\[\\1\\]"/' "$prompt_file"
-        sed -i 's/${COLOR_NONE} ${RED}${BRANCH}/\\[${COLOR_NONE}\\] \\[${RED}${BRANCH}\\]/' "$prompt_file"
-        sed -i 's/\(\\n\)${COLOR_NONE}${PROMPT_SYMBOL}/\1\\[${COLOR_NONE}\\]${PROMPT_SYMBOL}/' "$prompt_file"
+        safe_sed_i 's/PS1="\n\([^"]*\)"/PS1="\\n\\[\\1\\]"/' "$prompt_file"
+        safe_sed_i 's/${COLOR_NONE} ${RED}${BRANCH}/\\[${COLOR_NONE}\\] \\[${RED}${BRANCH}\\]/' "$prompt_file"
+        safe_sed_i 's/\(\\n\)${COLOR_NONE}${PROMPT_SYMBOL}/\1\\[${COLOR_NONE}\\]${PROMPT_SYMBOL}/' "$prompt_file"
       fi
     fi
     
     echo -e "${GREEN}Prompt fixed for better history navigation${NC}"
   else
     echo -e "${YELLOW}Warning: Could not find prompt.rc file${NC}"
+  fi
+}
+
+function fix_stig_tmout() {
+  # RHEL9 STIG sets 'readonly TMOUT=600' in /etc/profile or a profile.d script.
+  # The Ansible-managed zzz-disable-tmout.sh tries to 'unset TMOUT' which fails
+  # with "cannot unset: readonly variable" errors on every login.
+  # Fix: rewrite the script to suppress errors since a readonly TMOUT truly
+  # cannot be unset — only silencing the noise is possible.
+
+  local tmout_script="/etc/profile.d/zzz-disable-tmout.sh"
+
+  # Uses the shared privilege helpers above so behavior matches installer policy.
+  if [ ! -f "$tmout_script" ]; then
+    return 0
+  fi
+
+  # Check if the script already has error suppression
+  if grep -q '2>/dev/null' "$tmout_script" 2>/dev/null; then
+    return 0
+  fi
+
+  echo -e "${YELLOW}Fixing STIG TMOUT error suppression...${NC}"
+
+  if [ "$(id -u)" -eq 0 ] || [ -w "$tmout_script" ]; then
+    # Root (or directly writable file) can write without sudo.
+    cat > "$tmout_script" <<'TMOUT_EOF'
+# Managed by Ansible - Disable STIG TMOUT to prevent premature terminal disconnection
+# If TMOUT is readonly (STIG), suppress errors; it cannot be unset.
+if ! readonly -p 2>/dev/null | grep -q ' TMOUT='; then
+    unset TMOUT 2>/dev/null
+else
+    # TMOUT is readonly — nothing we can do, but don't print errors
+    true
+fi
+TMOUT_EOF
+    echo -e "${GREEN}STIG TMOUT errors fixed ($tmout_script updated)${NC}"
+  elif can_elevate_privileges; then
+    # Non-root users: use sudo when they can elevate.
+    run_with_privileges tee "$tmout_script" > /dev/null <<'TMOUT_EOF'
+# Managed by Ansible - Disable STIG TMOUT to prevent premature terminal disconnection
+# If TMOUT is readonly (STIG), suppress errors; it cannot be unset.
+if ! readonly -p 2>/dev/null | grep -q ' TMOUT='; then
+    unset TMOUT 2>/dev/null
+else
+    # TMOUT is readonly — nothing we can do, but don't print errors
+    true
+fi
+TMOUT_EOF
+    echo -e "${GREEN}STIG TMOUT errors fixed ($tmout_script updated via sudo)${NC}"
+  else
+    echo -e "${YELLOW}Skipping STIG TMOUT fix (no root/sudo privileges available).${NC}"
   fi
 }
 
@@ -524,6 +663,8 @@ if [ "$PREVIEW_MODE" = false ]; then
   fix_history_timestamps
   # Also fix history search bindings for prior installation
   fix_history_search
+  # Fix STIG TMOUT readonly errors on RHEL9
+  fix_stig_tmout
 else
   echo "Run without --preview to perform actual installation"
 fi

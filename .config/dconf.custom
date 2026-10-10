@@ -1,0 +1,66 @@
+## This file is referenced by .bash_profile. if you are in a GUI environment, upon login these settings will be loaded, and then this file is DELETED.
+## To see all the dconf settings, you can use the following command:
+##   $ dconf dump / > ~/dconf.out
+##
+
+[org/freedesktop/tracker/miner/files]
+index-recursive-directories=['&DESKTOP', '&DOCUMENTS', '&DOWNLOAD', '&MUSIC', '&PICTURES', '&VIDEOS', '$HOME']
+
+[org/gnome/desktop/calendar]
+show-weekdate=true
+
+[org/gnome/desktop/interface]
+clock-show-date=true
+clock-show-seconds=true
+icon-theme='Adwaita'
+gtk-theme='Adwaita-dark'
+
+[org/gnome/desktop/notifications]
+application-children=['org-gnome-nautilus', 'org-gnome-gedit', 'firefox', 'google-chrome', 'org-gnome-terminal', 'libreoffice-calc', 'org-gnome-screenshot', 'scap-workbench']
+show-in-lock-screen=false
+
+[org/gnome/desktop/peripherals/keyboard]
+numlock-state=true
+
+[org/gnome/desktop/privacy]
+disable-microphone=true
+remove-old-temp-files=true
+remove-old-trash-files=true
+
+[org/gnome/desktop/search-providers]
+sort-order=['']
+disable-external=true
+enabled=['org.gnome.Characters.desktop']
+
+[org/gnome/desktop/wm/keybindings]
+switch-applications=['<Alt>Tab']
+switch-applications-backward=['<Shift><Alt>Tab']
+
+[org/gnome/desktop/wm/preferences]
+button-layout='appmenu:minimize,maximize,close'
+
+[org/gnome/gedit/plugins]
+active-plugins=['time', 'spell', 'modelines', 'docinfo']
+
+[org/gnome/nautilus/preferences]
+recursive-search='never'
+show-directory-item-counts='never'
+
+[org/gnome/settings-daemon/peripherals/keyboard]
+numlock-state='on'
+
+[org/gnome/settings-daemon/plugins/power]
+power-button-action='nothing'
+
+[org/gnome/shell]
+enabled-extensions=['top-icons@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@gnome-shell-extensions.gcampax.github.com', 'apps-menu@gnome-shell-extensions.gcampax.github.com', 'workspace-indicator@gnome-shell-extensions.gcampax.github.com', 'desktop-icons@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com']
+favorite-apps=['google-chrome.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'code.desktop', 'org.gnome.gedit.desktop', 'keepass.desktop']
+
+[org/gnome/shell/extensions/dash-to-dock]
+apply-custom-theme=false
+multi-monitor=true
+scroll-action='switch-workspace'
+isolate-monitors=true
+dock-position='BOTTOM'
+isolate-workspaces=true
+preferred-monitor=0

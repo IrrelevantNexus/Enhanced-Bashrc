@@ -13,71 +13,161 @@ ALLOWUPDATE='True'
 
 ## The various escape codes that we can use to color our prompt.
 RED="\e[31m"
-YELLOW="\e[33m"
-GREEN="\e[32m"
-BLUE="\e[34m"
 LIGHT_RED="\e[31m"
+YELLOW="\e[33m"
+BRIGHT_YELLOW="\e[1;33m"
+GREEN="\e[32m"
 LIGHT_GREEN="\e[32m"
+BLUE="\e[34m"
 WHITE="\e[37m"
 LIGHT_GRAY="\e[37m"
 COLOR_NONE="\e[0m"
+
+# Only display command timing when runtime is noticeable.
+COMMAND_DURATION_THRESHOLD_MS=2000
+
+# Prompt timing state for previous-command duration display.
+__BASHRC_PROMPT_RENDERING=0
+__BASHRC_COMMAND_RUNNING=0
+__BASHRC_COMMAND_START_MS=0
 
 ## set_title: Updates terminal title with current user, host and directory
 function set_title() {
     echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"
 }
 
+## Millisecond clock helper for command timing.
+function now_ms() {
+  local now sec frac
+
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
+    now="${EPOCHREALTIME}"
+    sec="${now%.*}"
+    frac="${now#*.}"
+    frac="${frac}000"
+    echo "$((10#$sec * 1000 + 10#${frac:0:3}))"
+  else
+    echo "$((SECONDS * 1000))"
+  fi
+}
+
+## Pretty-print command duration in ms/s/m.
+function format_duration() {
+  local ms="$1"
+  local s m
+
+  if (( ms < 1000 )); then
+    echo "${ms}ms"
+  elif (( ms < 60000 )); then
+    s=$((ms / 1000))
+    ms=$((ms % 1000))
+    printf '%d.%03ds' "$s" "$ms"
+  else
+    m=$((ms / 60000))
+    s=$(((ms % 60000) / 1000))
+    printf '%dm%02ds' "$m" "$s"
+  fi
+}
+
+## Start command timer just before user commands execute.
+function preexec_timer() {
+  [[ "${__BASHRC_PROMPT_RENDERING}" -eq 1 ]] && return
+
+  case "$BASH_COMMAND" in
+    set_bash_prompt|history\ -a|now_ms|format_duration|preexec_timer)
+      return
+      ;;
+  esac
+
+  if [[ "${__BASHRC_COMMAND_RUNNING}" -eq 0 ]]; then
+    __BASHRC_COMMAND_START_MS="$(now_ms)"
+    __BASHRC_COMMAND_RUNNING=1
+  fi
+}
+
+## Install DEBUG trap once so timing stays active for interactive commands.
+if ! trap -p DEBUG | grep -q 'preexec_timer'; then
+  if [[ -n "$(trap -p DEBUG)" ]]; then
+    __BASHRC_EXISTING_DEBUG_TRAP=$(trap -p DEBUG | awk -F"'" '{print $2}')
+    trap "${__BASHRC_EXISTING_DEBUG_TRAP}; preexec_timer" DEBUG
+  else
+    trap 'preexec_timer' DEBUG
+  fi
+fi
+
 ## Detect whether the current directory is a git repository.
-function is_git_repository {
-  git branch > /dev/null 2>&1
+function is_git_repository() {
+  git rev-parse --is-inside-work-tree > /dev/null 2>&1
 }
 
 ## Determine the branch/state information for this git repository.
-function set_git_branch {
+function set_git_branch() {
   ## Initialize variables to avoid persistence from previous calls
   BRANCH=""
+  local repo=""
   local branch=""
   local remote=""
   local state=""
-  
-  ## Capture the output of the "git status" command.
-  git_status="$(git status 2> /dev/null)"
+  local line=""
+  local prefix=""
+  local x=""
+  local y=""
+  local changes=""
+  local staged=0
+  local unstaged=0
+  local untracked=0
+  local ahead=0
+  local behind=0
+  local count_details=""
 
-  ## Set color based on clean/staged/dirty.
-  if [[ ${git_status} =~ "working directory clean" || ${git_status} =~ "working tree clean" ]]; then
-    state="${GREEN}"
-  elif [[ ${git_status} =~ "Changes to be committed" ]]; then
-    state="${YELLOW}"
-  else
-    state="${LIGHT_RED}"
+  repo="$(basename "$(git rev-parse --show-toplevel 2> /dev/null)")"
+  branch="$(git symbolic-ref --quiet --short HEAD 2> /dev/null)"
+
+  if [[ -z "$branch" ]]; then
+    branch="detached@$(git rev-parse --short HEAD 2> /dev/null)"
   fi
 
-  ## Set arrow icon based on status against remote.
-  remote_pattern="Your branch is (.*) of"
-  if [[ ${git_status} =~ ${remote_pattern} ]]; then
-    if [[ ${BASH_REMATCH[1]} == "ahead" ]]; then
-      remote="↑"
-    else
-      remote="↓"
+  while IFS= read -r line; do
+    if [[ "$line" == "## "* ]]; then
+      if [[ "$line" =~ ahead[[:space:]]([0-9]+) ]]; then
+        ahead="${BASH_REMATCH[1]}"
+      fi
+      if [[ "$line" =~ behind[[:space:]]([0-9]+) ]]; then
+        behind="${BASH_REMATCH[1]}"
+      fi
+      continue
     fi
-  fi
-  diverge_pattern="Your branch and (.*) have diverged"
-  if [[ ${git_status} =~ ${diverge_pattern} ]]; then
-    remote="↕"
+
+    prefix="${line:0:2}"
+    if [[ "$prefix" == "??" ]]; then
+      ((untracked++))
+      continue
+    fi
+
+    x="${prefix:0:1}"
+    y="${prefix:1:1}"
+    [[ "$x" != " " ]] && ((staged++))
+    [[ "$y" != " " ]] && ((unstaged++))
+  done < <(git status --porcelain --branch 2> /dev/null)
+
+  [[ "$ahead" -gt 0 ]] && remote+="↑${ahead}"
+  [[ "$behind" -gt 0 ]] && remote+="↓${behind}"
+
+  if (( staged > 0 || unstaged > 0 || untracked > 0 )); then
+    state="${LIGHT_RED}"
+    [[ "$staged" -gt 0 ]] && count_details+=" ${GREEN}+${staged}${LIGHT_RED}"
+    [[ "$unstaged" -gt 0 ]] && count_details+=" ${YELLOW}~${unstaged}${LIGHT_RED}"
+    [[ "$untracked" -gt 0 ]] && count_details+=" ${LIGHT_RED}?${untracked}${LIGHT_RED}"
+    changes+="${count_details}"
+  else
+    state="${GREEN}"
   fi
 
-  ## Get the name of the branch.
-  branch_pattern="^On branch ([^${IFS}]*)"
-  if [[ ${git_status} =~ ${branch_pattern} ]]; then
-    branch=${BASH_REMATCH[1]}
-  fi
-
-  ## Set the final branch string.
-  BRANCH="(${branch})${remote}"
+  BRANCH="${state}(${repo}:${branch}${remote}${changes})${COLOR_NONE}"
 }
 
 ## Return the prompt symbol to use, colorized based on the return value of the previous command.
-function set_prompt_symbol () {
+function set_prompt_symbol() {
   if test "$1" -eq 0 ; then
       PROMPT_SYMBOL="\$"
   else
@@ -86,16 +176,55 @@ function set_prompt_symbol () {
 }
 
 ## Determine active Python virtualenv details.
-function set_virtualenv () {
+function set_virtualenv() {
   if test -z "$VIRTUAL_ENV" ; then
       PYTHON_VIRTUALENV=""
   else
-      PYTHON_VIRTUALENV="${BLUE}[V:$(basename $VIRTUAL_ENV)]${COLOR_NONE} "
+      PYTHON_VIRTUALENV="${BLUE}[venv:$(basename $VIRTUAL_ENV)]${COLOR_NONE} "
+  fi
+}
+
+## Determine active Python pipenv details.
+function set_pipenv() {
+  PYTHON_PIPENV=""
+
+  # pipenv shell exports PIPENV_ACTIVE and usually PIPENV_PIPFILE.
+  if test -n "$PIPENV_ACTIVE" ; then
+    local pipenv_name="pipenv"
+
+    if test -n "$PIPENV_PIPFILE" ; then
+      pipenv_name="$(basename "$(dirname "$PIPENV_PIPFILE")")"
+    elif test -n "$VIRTUAL_ENV" ; then
+      pipenv_name="$(basename "$VIRTUAL_ENV")"
+    fi
+
+    PYTHON_PIPENV="${BLUE}[pipenv:${pipenv_name}]${COLOR_NONE} "
+  fi
+}
+
+## Determine active Python pyenv details.
+function set_pyenv() {
+  if ! command -v pyenv > /dev/null 2>&1 ; then
+    PYTHON_PYENV=""
+    return
+  fi
+
+  if test -n "$VIRTUAL_ENV" || test -n "$CONDA_PROMPT_MODIFIER" ; then
+    PYTHON_PYENV=""
+    return
+  fi
+
+  local pyenv_version
+  pyenv_version="$(pyenv version-name 2> /dev/null)"
+  if test -z "$pyenv_version" || test "$pyenv_version" = "system" ; then
+    PYTHON_PYENV=""
+  else
+    PYTHON_PYENV="${BLUE}[pyenv:${pyenv_version}]${COLOR_NONE} "
   fi
 }
 
 # Function to determine active Docker machine details.
-function set_docker_machine () {
+function set_docker_machine() {
   if test -z "$DOCKER_MACHINE_NAME" ; then
       DOCKER_MACHINE=""
   else
@@ -104,7 +233,7 @@ function set_docker_machine () {
 }
 
 ## Show that we are in a screen
-function set_screen_session () {
+function set_screen_session() {
   if test -z "$STY" ; then
       SCREEN_SESSION=""
   else
@@ -112,8 +241,41 @@ function set_screen_session () {
   fi
 }
 
+## Determine if current directory is on network storage.
+## Parses /proc/mounts directly instead of calling df, which can hang on
+## unresponsive network mounts. /proc/mounts is a kernel procfs file and
+## returns instantly regardless of mount health.
+function set_network_mount() {
+  NETWORK_MOUNT=""
+  local best_match_len=0
+  local match_source=""
+  local match_fstype=""
+
+  if [[ ! -r /proc/mounts ]]; then
+    return
+  fi
+
+  # Find the longest-matching mount point for $PWD
+  while IFS=' ' read -r src mnt fstype _rest; do
+    if [[ "$PWD" == "$mnt" || "$PWD" == "$mnt"/* ]]; then
+      if (( ${#mnt} > best_match_len )); then
+        best_match_len=${#mnt}
+        match_source="$src"
+        match_fstype="$fstype"
+      fi
+    fi
+  done < /proc/mounts
+
+  # Show indicator only for known network filesystem types
+  case "$match_fstype" in
+    cifs|smb|smbfs|nfs|nfs4|afs|sshfs|fuse.sshfs|glusterfs|gfs|gfs2|lustre|pvfs2|ceph|9p)
+      NETWORK_MOUNT=" \[${BRIGHT_YELLOW}\][${match_source}]\[${COLOR_NONE}\]"
+      ;;
+  esac
+}
+
 ## Determine active Python conda details.
-function set_conda () {
+function set_conda() {
   if test -z "$CONDA_PROMPT_MODIFIER" ; then
       PYTHON_CONDA=""
   else
@@ -130,16 +292,57 @@ function set_conda () {
   fi
 }
 
+## Determine previous command duration details.
+function set_command_duration() {
+  COMMAND_DURATION=""
+
+  if [[ "${__BASHRC_COMMAND_RUNNING}" -eq 1 ]]; then
+    local now_ms elapsed_ms
+    now_ms="$(now_ms)"
+    elapsed_ms=$((now_ms - __BASHRC_COMMAND_START_MS))
+    if (( elapsed_ms < 0 )); then
+      elapsed_ms=0
+    fi
+
+    if (( elapsed_ms >= COMMAND_DURATION_THRESHOLD_MS )); then
+      COMMAND_DURATION="${BRIGHT_YELLOW}[T:$(format_duration "$elapsed_ms")]${COLOR_NONE} "
+    fi
+    __BASHRC_COMMAND_RUNNING=0
+  fi
+}
+
+
+## Truncate the working directory path if it exceeds a max length.
+## Replaces $HOME prefix with ~ then trims from the left, preserving
+## the end of the path which is most useful for orientation.
+MAX_PWD_LENGTH=50
+function set_truncated_path() {
+  local p="${PWD/#$HOME/~}"
+  if (( ${#p} > MAX_PWD_LENGTH )); then
+    TRUNC_PWD="…${p: -$((MAX_PWD_LENGTH - 1))}"
+  else
+    TRUNC_PWD="$p"
+  fi
+}
 
 ### MAIN
 
-function set_bash_prompt () {
+function set_bash_prompt() {
+  local last_exit=$?
+  __BASHRC_PROMPT_RENDERING=1
+
+  set_command_duration
+
   ## Set the PROMPT_SYMBOL variable. We do this first so we don't lose the return value of the previous command.
-  set_prompt_symbol $?
+  set_prompt_symbol "$last_exit"
   set_virtualenv
+  set_pipenv
+  set_pyenv
   set_docker_machine
   set_conda
   set_screen_session
+  set_network_mount
+  set_truncated_path
   
   ## Check git status and set branch - IMPORTANT: Always reset BRANCH first
   if is_git_repository ; then
@@ -154,7 +357,9 @@ function set_bash_prompt () {
 
   ## Set the bash prompt variable - using \[ and \] to properly wrap non-printing characters
   ## This is crucial for readline to correctly calculate prompt length
-  PS1="\n\[${DOCKER_MACHINE}\]\[${PYTHON_VIRTUALENV}\]\[${PYTHON_CONDA}\]\[${GREEN}\]\u@\h \[${LIGHT_GRAY}\]\A \[${SCREEN_SESSION}\]\w\[${COLOR_NONE}\] \[${RED}\]${BRANCH}\n\[${COLOR_NONE}\]${PROMPT_SYMBOL} "
+  PS1="\n\[${DOCKER_MACHINE}\]\[${PYTHON_VIRTUALENV}\]\[${PYTHON_PIPENV}\]\[${PYTHON_CONDA}\]\[${PYTHON_PYENV}\]\[${GREEN}\]\u@\h \[${LIGHT_GRAY}\]\D{%-m/%d} \A \[${COMMAND_DURATION}\]\[${SCREEN_SESSION}\]${TRUNC_PWD}${NETWORK_MOUNT}\[${COLOR_NONE}\] ${BRANCH}\n\[${COLOR_NONE}\]${PROMPT_SYMBOL} "
+
+  __BASHRC_PROMPT_RENDERING=0
 }
 
 ## Enable history syncing without disrupting prompt - append to PROMPT_COMMAND

@@ -19,6 +19,35 @@ for arg in "$@"; do
     esac
 done
 
+# Privilege policy shared by update() and .install.rc's fix functions:
+# - If root: run directly (no sudo)
+# - If non-root with usable sudo: run with sudo
+# - If no elevation path: skip and continue (no manual sudo instructions)
+# Return success if command can be executed with elevated privileges.
+function can_elevate_privileges() {
+  if [ "$(id -u)" -eq 0 ]; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    if sudo -n true 2>/dev/null || sudo -v 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+# Run a command as root when needed.
+# Usage: run_with_privileges <command> [args...]
+function run_with_privileges() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
 function update() {
   if [ -n "$1" ]; then
     u=$1
@@ -50,16 +79,23 @@ function update() {
         local_changes=true
       fi
       
-      # Perform git pull based on user type
+      # Perform git pull. This works the same for any user as long as they can write to
+      # $WORKINGDIR (their own clone, or a shared /opt/bashrc checkout they own). When a
+      # non-owning user updates a shared /opt/bashrc checkout, fall back to sudo when
+      # available instead of silently failing with a misleading network error.
       update_success=false
-      if [ "$(id -u)" -eq 0 ]; then
-        if GIT_SSH_COMMAND="ssh -i /root/.ssh/kickstart-id_rsa" git pull origin main; then
-          update_success=true
-        fi
-      else # if normal user       
+      permission_skip=false
+      if [ -w "$WORKINGDIR" ]; then
         if git pull origin main; then
           update_success=true
         fi
+      elif can_elevate_privileges; then
+        if run_with_privileges git pull origin main; then
+          update_success=true
+        fi
+      else
+        permission_skip=true
+        echo -e "${YELLOW}No write permission to $WORKINGDIR and no sudo access available. Skipping update.${NC}"
       fi
       
       # Inform user about stashed changes without reapplying them
@@ -81,26 +117,32 @@ function update() {
         if [ -f "$UPDATE_CHECK_FILE" ]; then
           rm -f "$UPDATE_CHECK_FILE"
         fi
-      else
+      elif [ "$permission_skip" = false ]; then
         echo -e "${RED}Update failed. Please check your network connection and git repository access.${NC}"
       fi
     fi
-
     popd > /dev/null 2>&1
   else
     echo "Skipping update check."
   fi
 }
 
-# Ensure /opt/bashrc exists by cloning if necessary, using dynamic upstream and branch
+# Ensure /opt/bashrc exists by cloning if necessary, using dynamic upstream and branch.
+# /opt/bashrc is only used to support the 'updatebash' alias; it is never required to install to $HOME,
+# so a lack of write permission here should never block the rest of the install.
 if [ ! -d "/opt/bashrc" ]; then
-  echo -e "${YELLOW}/opt/bashrc does not exist. Cloning Enhanced-Bashrc repository...${NC}"
-  # Dynamically determine upstream repo and default branch
-  UPSTREAM_URL="$(git -C "$WORKINGDIR" remote get-url origin 2>/dev/null)"
-  DEFAULT_BRANCH="$(git -C "$WORKINGDIR" remote show origin 2>/dev/null | awk '/HEAD branch/ {print $NF}')"
-  if [ -z "$DEFAULT_BRANCH" ]; then
-    DEFAULT_BRANCH="main"
-  fi
+  if [ ! -w "/opt" ]; then
+    echo -e "${YELLOW}Note: No write permission to /opt (root/sudo required). Skipping /opt/bashrc setup -${NC}"
+    echo -e "${YELLOW}the 'updatebash' shortcut won't be available, but installation will continue normally.${NC}"
+  else
+    echo -e "${YELLOW}/opt/bashrc does not exist. Cloning Enhanced-Bashrc repository...${NC}"
+
+    # Dynamically determine upstream repo and default branch
+    UPSTREAM_URL="$(git -C "$WORKINGDIR" remote get-url origin 2>/dev/null)"
+    DEFAULT_BRANCH="$(git -C "$WORKINGDIR" remote show origin 2>/dev/null | awk '/HEAD branch/ {print $NF}')"
+    if [ -z "$DEFAULT_BRANCH" ]; then
+      DEFAULT_BRANCH="main"
+    fi
     if [ -z "$UPSTREAM_URL" ]; then
       echo -e "${YELLOW}No upstream URL found for this repository. Skipping /opt/bashrc clone process.${NC}"
     else
@@ -116,6 +158,7 @@ if [ ! -d "/opt/bashrc" ]; then
         echo -e "${YELLOW}[Preview] Would clone $UPSTREAM_URL ($DEFAULT_BRANCH) to /opt/bashrc${NC}"
       fi
     fi
+  fi
 fi
 
 ### Main Logic
@@ -132,7 +175,7 @@ if [ "$PREVIEW_MODE" = true ]; then
 fi
 
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║     Enhanced Bash Configuration Installer v1.1.0           ║${NC}"
+echo -e "${GREEN}║     Enhanced Bash Configuration Installer v1.1.4           ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo "This installer will configure your bash environment with:"
@@ -168,4 +211,4 @@ if [ ! -f "$WORKINGDIR/.install.rc" ]; then
     exit 1
 fi
 
-. "$WORKINGDIR/.install.rc"
+source "$WORKINGDIR/.install.rc"

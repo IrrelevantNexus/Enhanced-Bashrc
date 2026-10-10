@@ -10,11 +10,11 @@ NC="\e[0m"
 PREVIEW_MODE=false
 
 # Parse command line arguments
+# Note: 'for arg in "$@"' iterates the original argument list, so no shift is needed here
 for arg in "$@"; do
     case "$arg" in
         --preview|--dry-run)
             PREVIEW_MODE=true
-            shift
             ;;
     esac
 done
@@ -68,7 +68,10 @@ function update() {
       echo -e "${RED}Error: $WORKINGDIR is not a git repository. Updates are only available for git-based installations.${NC}"
     else
       echo "Configuring git repository..."
-      git config --global --add safe.directory "$WORKINGDIR"
+      # Only add safe.directory if it's not already configured (avoid duplicates on repeated updates)
+      if ! git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$WORKINGDIR"; then
+        git config --global --add safe.directory "$WORKINGDIR"
+      fi
       
       echo "Checking for updates..."
       # Check for local changes
